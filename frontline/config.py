@@ -47,6 +47,10 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD") or ""
 DIGEST_TO = os.getenv("DIGEST_TO") or ""
 PUBLIC_URL = (os.getenv("PUBLIC_URL") or "http://localhost:8000").rstrip("/")
 
+# Set by frontline.desktop: enables native Windows toasts under this app identity
+DESKTOP = os.getenv("FRONTLINE_DESKTOP") == "1"
+APP_ID = "Frontline.ResearchRadar"
+
 DEFAULT_TOPICS = [
     {
         "slug": "legged-robots",

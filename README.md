@@ -20,17 +20,16 @@ A one-button research radar. Press **Sweep now** and Frontline searches **arXiv,
 - **Reading workflow**: star papers, track unread, filter by topic, subtopic or sweep, full-text search, one-click BibTeX, code-link detection, and Markdown export of any view.
 - Works **without an API key** too. Cards then fall back to abstract extracts and keyword-based scores.
 
-## Quick start (Windows)
+## Quick start (Windows desktop app)
 
 ```powershell
 cd D:\Projects\frontline
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-copy .env.example .env      # then put your ANTHROPIC_API_KEY in .env
-.\run.ps1                   # opens http://localhost:8000
+.\install-desktop.ps1       # one time: sets up .venv and adds Desktop + Start-menu icons
 ```
 
-macOS/Linux: `source .venv/bin/activate && uvicorn frontline.app:app --port 8000`.
+Put your `ANTHROPIC_API_KEY` in `.env`, then double-click **Frontline** on your Desktop. It opens in its own window: there's no browser tab or terminal, and the backend runs inside the app. When a sweep finishes you get a native Windows notification. Only one window can be open at a time. Logs go to `data/frontline.log`.
+
+If you'd rather use a browser, `.\run.ps1` still serves it at http://localhost:8000. On macOS/Linux, run `source .venv/bin/activate && uvicorn frontline.app:app --port 8000`.
 
 ## Configuration (`.env`)
 
@@ -70,6 +69,7 @@ Sweep ─► for each topic:
 | `frontline/notify.py` | ntfy and email |
 | `frontline/db.py` | SQLite storage |
 | `frontline/app.py` | FastAPI routes |
+| `frontline/desktop.py` | Desktop window (pywebview), Windows toasts, shortcut installer |
 | `static/` | The single-page UI (no build step) |
 
 ## Navigating

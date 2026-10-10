@@ -1,10 +1,13 @@
-"""Out-of-browser notifications: ntfy.sh push (phone/desktop) and email digests."""
+"""Out-of-browser notifications: native Windows toasts (desktop app), ntfy.sh push and email digests."""
 
 import asyncio
 import html
 import logging
+import os
 import smtplib
+import subprocess
 from email.message import EmailMessage
+from xml.sax.saxutils import escape
 
 import httpx
 
@@ -12,9 +15,31 @@ from . import config
 
 log = logging.getLogger("frontline.notify")
 
+# Shows a toast through the WinRT notification API under Frontline's app identity
+# (registered in HKCU by frontline.desktop). Payload comes in via env vars to avoid quoting issues.
+_TOAST_PS = r"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] > $null
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($env:FRONTLINE_TOAST_XML)
+$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($env:FRONTLINE_APP_ID).Show($toast)
+"""
+
+
+def desktop_toast(title: str, lines: list[str]) -> None:
+    texts = "".join(f"<text>{escape(t)}</text>" for t in [title, *lines][:3])
+    xml = f'<toast><visual><binding template="ToastGeneric">{texts}</binding></visual></toast>'
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", _TOAST_PS],
+        env={**os.environ, "FRONTLINE_TOAST_XML": xml, "FRONTLINE_APP_ID": config.APP_ID},
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        capture_output=True, timeout=30, check=True,
+    )
+
 
 def channels() -> list[str]:
-    out = []
+    out = ["desktop"] if config.DESKTOP else []
     if config.NTFY_TOPIC:
         out.append("ntfy")
     if config.SMTP_HOST and config.DIGEST_TO:
@@ -75,6 +100,13 @@ async def notify_sweep(sweep_id: int, new_papers: list[dict], digest: str) -> li
         f"- ({p['relevance']}/10) {p['title']}: {p['summary'].get('tldr', '')}" for p in ranked[:5]
     )
     sent = []
+    if config.DESKTOP:
+        try:
+            top = ranked[0]["title"]
+            await asyncio.to_thread(desktop_toast, title, [f"Top pick: {top}"])
+            sent.append("desktop")
+        except Exception as e:
+            log.warning("desktop toast failed: %s", e)
     if config.NTFY_TOPIC:
         try:
             await send_ntfy(title, f"Top picks:\n{bullets}"[:3500], link)
