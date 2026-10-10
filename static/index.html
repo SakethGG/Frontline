@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frontline</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1.5' y='1.5' width='29' height='29' rx='5' fill='%23fff27a' stroke='%23222' stroke-width='3'/><path d='M8 22l5-12 4 8 2-4 4 8' stroke='%23222' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+</head>
+<body>
+  <!-- 1. Top bar: brand · search · actions -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="5" fill="var(--accent)" stroke="var(--ink)" stroke-width="3"/><path d="M8 22l5-12 4 8 2-4 4 8" stroke="var(--on-accent)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Frontline</span>
+    </div>
+    <div class="search-wrap">
+      <span class="search-icon" aria-hidden="true">⌕</span>
+      <input type="search" id="search" placeholder="Search papers…" aria-label="Search papers">
+      <kbd class="search-kbd">/</kbd>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="helpBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+      <button class="icon-btn" id="themeBtn" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
+      <button class="icon-btn" id="settingsBtn" title="Topics & settings" aria-label="Topics and settings">⚙</button>
+      <button class="sweep-btn" id="sweepBtn" title="Find new papers now">
+        <span class="sweep-icon">⟳</span><span id="sweepLabel">Sweep now</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Sweep progress (only while running) -->
+  <section class="progress" id="progress" hidden>
+    <div class="progress-head"><strong id="progressPhase">Searching…</strong><span id="progressCount"></span></div>
+    <div class="bar"><div class="bar-fill" id="progressBar"></div></div>
+    <div class="progress-log" id="progressLog"></div>
+  </section>
+
+  <main class="page">
+    <!-- 2. Briefing: one compact line, expandable -->
+    <section class="briefing" id="briefing" hidden>
+      <button class="briefing-line" id="briefingToggle" aria-expanded="false">
+        <span class="briefing-badge">Briefing</span>
+        <span class="briefing-text" id="briefingSummary"></span>
+        <span class="briefing-chev">▾</span>
+      </button>
+      <div class="briefing-body" id="briefingBody" hidden>
+        <div class="md" id="briefingMd"></div>
+        <div class="briefing-foot">
+          <label>Past sweeps <select id="historySelect"></select></label>
+          <a class="text-btn" id="exportBtn" href="/api/export.md">Export as Markdown</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Topics (pills) -->
+    <nav class="topics" id="topics" aria-label="Topics and followed researchers"></nav>
+
+    <!-- Followed researcher: profile header (only when one is selected) -->
+    <section class="profile" id="profile" hidden></section>
+
+    <!-- 4. View tabs + the two filters that matter -->
+    <div class="viewbar">
+      <div class="tabs" role="tablist" id="viewTabs">
+        <button class="tab" role="tab" data-view="new">New <span class="badge" id="countNew"></span></button>
+        <button class="tab" role="tab" data-view="all">All <span class="badge" id="countAll"></span></button>
+        <button class="tab" role="tab" data-view="starred">Starred <span class="badge" id="countStarred"></span></button>
+      </div>
+      <div class="view-controls">
+        <label class="switch" title="Hide papers Claude rated below 5/10">
+          <input type="checkbox" id="relevantOnly"><span class="track"></span> Relevant only
+        </label>
+        <select id="sort" aria-label="Sort">
+          <option value="relevance">Most relevant</option>
+          <option value="newest">Newest</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 5. Subtopic chips (single scrollable row) -->
+    <div class="subtopics" id="subtopics"></div>
+
+    <div class="feed-status" id="feedStatus"></div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden></div>
+    <div class="more-wrap"><button class="ghost-btn" id="moreBtn" hidden>Show more</button></div>
+  </main>
+
+  <!-- Reader panel: everything about one paper, with prev/next -->
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="reader" id="reader" aria-hidden="true" aria-label="Paper reader">
+    <div class="reader-top">
+      <div class="reader-nav">
+        <button class="icon-btn" id="prevBtn" title="Previous paper (k)" aria-label="Previous paper">‹</button>
+        <span id="readerPos"></span>
+        <button class="icon-btn" id="nextBtn" title="Next paper (j)" aria-label="Next paper">›</button>
+      </div>
+      <div class="reader-actions">
+        <button class="ghost-btn" id="rStar" title="Star (s)">☆ Star</button>
+        <button class="ghost-btn" id="rRead" title="Mark unread (u)">Mark unread</button>
+        <button class="icon-btn" id="closeReader" title="Close (Esc)" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <div class="reader-scroll" id="readerScroll">
+      <div class="reader-head">
+        <div class="reader-meta" id="rMeta"></div>
+        <h2 id="rTitle"></h2>
+        <div class="reader-authors" id="rAuthors"></div>
+        <div class="reader-links" id="rLinks"></div>
+      </div>
+      <div class="rtabs" role="tablist">
+        <button class="rtab active" data-rtab="summary">Summary</button>
+        <button class="rtab" data-rtab="dive">Deep dive</button>
+        <button class="rtab" data-rtab="ask">Ask</button>
+      </div>
+      <section class="rpanel" data-rpanel="summary" id="rSummary"></section>
+      <section class="rpanel" data-rpanel="dive" hidden>
+        <div class="md" id="rDive"></div>
+        <button class="text-btn" id="rRegen" hidden>Regenerate</button>
+      </section>
+      <section class="rpanel" data-rpanel="ask" hidden>
+        <div class="chat" id="rChat"></div>
+      </section>
+    </div>
+    <form class="ask-form" id="askForm" hidden>
+      <input id="askInput" placeholder="Ask about this paper…" autocomplete="off">
+      <button class="primary-btn" type="submit">Ask</button>
+    </form>
+  </aside>
+
+  <!-- Settings: topic list -->
+  <dialog class="modal" id="settingsModal">
+    <div class="modal-head">
+      <h2>Your topics</h2>
+      <button class="icon-btn" data-close aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Each topic is searched on every sweep. Click a topic to edit its search phrases and subtopics.</p>
+      <ul class="topic-admin" id="topicAdmin"></ul>
+      <div class="admin-actions">
+        <button class="primary-btn" id="addTopicBtn">+ Add a topic</button>
+        <button class="ghost-btn" id="followBtn">+ Follow a researcher</button>
+      </div>
+      <div class="status-box" id="statusBox"></div>
+    </div>
+  </dialog>
+
+  <!-- Follow a researcher: search by name, pick the right person -->
+  <dialog class="modal" id="followModal">
+    <div class="modal-head">
+      <h2>Follow a researcher</h2>
+      <button class="icon-btn" data-close aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Every paper they co-author shows up here, so you see everything coming out of their lab. Pick the right person: many names are shared.</p>
+      <form class="follow-search" id="followForm">
+        <input id="followName" placeholder="e.g. Sangbae Kim" autocomplete="off" aria-label="Researcher name">
+        <button class="primary-btn" type="submit">Search</button>
+      </form>
+      <ul class="candidates" id="candidates"></ul>
+    </div>
+  </dialog>
+
+  <!-- Topic editor -->
+  <dialog class="modal" id="topicModal">
+    <form method="dialog" id="topicForm">
+      <div class="modal-head">
+        <h2 id="tmTitle">New topic</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body form">
+        <label>Name<input name="name" required placeholder="e.g. Legged Robots"></label>
+        <label>What are you interested in? <small>Claude uses this to score relevance</small>
+          <textarea name="description" rows="3" placeholder="e.g. Learning-based control and co-design for quadrupeds and humanoids"></textarea></label>
+        <label>Search phrases <small>one per line</small>
+          <textarea name="queries" rows="4" required placeholder="legged robot&#10;quadruped&#10;humanoid locomotion"></textarea></label>
+        <label>Subtopics <small>one per line, used to tag and filter cards</small>
+          <textarea name="subtopics" rows="4" placeholder="Co-design&#10;Control&#10;Reinforcement Learning"></textarea></label>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="row">
+            <label>arXiv categories <small>comma separated</small><input name="arxiv_categories" placeholder="cs.RO, cs.LG"></label>
+            <label class="narrow">Look back (days)<input name="lookback_days" type="number" min="1" max="90" value="7"></label>
+          </div>
+          <label class="check"><input type="checkbox" name="enabled" checked> Include in sweeps</label>
+        </details>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="danger-btn" id="tmDelete" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost-btn" data-close>Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Keyboard shortcuts -->
+  <dialog class="modal small" id="helpModal">
+    <div class="modal-head"><h2>Keyboard shortcuts</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+    <div class="modal-body">
+      <dl class="keys">
+        <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Next / previous paper</dd>
+        <dt><kbd>Enter</kbd></dt><dd>Open the selected paper</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Close the reader</dd>
+        <dt><kbd>s</kbd></dt><dd>Star / unstar</dd>
+        <dt><kbd>u</kbd></dt><dd>Toggle read / unread</dd>
+        <dt><kbd>d</kbd></dt><dd>Deep dive</dd>
+        <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>New / All / Starred</dd>
+        <dt><kbd>/</kbd></dt><dd>Search</dd>
+        <dt><kbd>Shift</kbd> + <kbd>S</kbd></dt><dd>Sweep now</dd>
+      </dl>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
