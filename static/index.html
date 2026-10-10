@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Frontline</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1.5' y='1.5' width='29' height='29' rx='5' fill='%23fff27a' stroke='%23222' stroke-width='3'/><path d='M8 22l5-12 4 8 2-4 4 8' stroke='%23222' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="icon" type="image/png" href="/static/frontline.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
@@ -16,7 +16,16 @@
   <!-- 1. Top bar: brand · search · actions -->
   <header class="topbar">
     <div class="brand">
-      <svg class="logo" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="5" fill="var(--accent)" stroke="var(--ink)" stroke-width="3"/><path d="M8 22l5-12 4 8 2-4 4 8" stroke="var(--on-accent)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="logo" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="5" fill="#00e5ff" stroke="var(--ink)" stroke-width="2.5"/>
+        <g stroke="#222" stroke-width="1.8" stroke-linejoin="round">
+          <rect x="12" y="10" width="12" height="15" rx="1.5" fill="#f7f7f3"/>
+          <rect x="10" y="8.5" width="12" height="15" rx="1.5" fill="#f7f7f3"/>
+          <rect x="8" y="7" width="12" height="15" rx="1.5" fill="#ff5f1f"/>
+          <path d="M10.5 11.5h7M10.5 14.5h7M10.5 17.5h4.5" stroke-linecap="round"/>
+          <path d="M25 4.5l1.1 2.4 2.4 1.1-2.4 1.1-1.1 2.4-1.1-2.4-2.4-1.1 2.4-1.1z" fill="#fff27a" stroke-width="1.2"/>
+        </g>
+      </svg>
       <span>Frontline</span>
     </div>
     <div class="search-wrap">
