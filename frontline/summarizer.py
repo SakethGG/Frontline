@@ -1,4 +1,8 @@
-"""Claude-powered paper cards, deep dives, Q&A and sweep digests (with a no-LLM fallback)."""
+"""AI paper cards, deep dives, Q&A and sweep digests via Claude or OpenAI (with a no-LLM fallback).
+
+FRONTLINE_LLM picks the provider: "claude", "openai", or "auto" (OpenAI when only an OpenAI key
+is set, otherwise Claude).
+"""
 
 import base64
 import json
@@ -7,6 +11,7 @@ import re
 
 import anthropic
 import httpx
+import openai
 
 from . import config
 
@@ -30,38 +35,150 @@ Relevance scoring (0-10) is about how useful the paper is to someone following t
 10 = core contribution squarely in the topic; 7-9 = clearly in-topic; 4-6 = adjacent or applies topic \
 ideas tangentially; 1-3 = mentions topic keywords but is about something else; 0 = unrelated."""
 
+AUTH_ERRORS = (anthropic.AuthenticationError, anthropic.PermissionDeniedError,
+               openai.AuthenticationError, openai.PermissionDeniedError)
+API_ERRORS = (anthropic.APIError, openai.APIError)
+
 
 class Refused(Exception):
     pass
 
 
+def explain(e: Exception) -> str:
+    """A readable reason for a failed AI call (no-credit, rate limit, bad key...)."""
+    body = getattr(e, "body", None)
+    err = body.get("error", body) if isinstance(body, dict) else None
+    detail = err.get("message") if isinstance(err, dict) else None
+    status = getattr(e, "status_code", None)
+    if isinstance(err, dict) and err.get("type") == "insufficient_quota":
+        return f"Your OpenAI account is out of credits. {detail or ''}".strip()
+    if status == 429:
+        return f"The AI provider is rate-limiting requests; wait a minute and try again. {detail or ''}".strip()
+    if isinstance(e, AUTH_ERRORS):
+        return f"The AI key was rejected; check it in .env. {detail or ''}".strip()
+    return f"The AI request failed: {detail or e}"
+
+
+def _provider() -> str:
+    if config.LLM_PROVIDER in ("claude", "openai"):
+        return config.LLM_PROVIDER
+    return "openai" if config.OPENAI_API_KEY and not config.ANTHROPIC_API_KEY else "claude"
+
+
+def _refused(resp) -> bool:
+    """Whether an OpenAI Responses API reply is a refusal."""
+    return any(c.type == "refusal" for o in resp.output if o.type == "message" for c in o.content)
+
+
 class Summarizer:
     def __init__(self) -> None:
-        self.client: anthropic.AsyncAnthropic | None = None
+        self.provider = _provider()
+        self.name = "OpenAI" if self.provider == "openai" else "Claude"
+        self.model = config.OPENAI_MODEL if self.provider == "openai" else config.MODEL
+        self.client = None
         self.disabled_reason = ""
         try:
-            self.client = anthropic.AsyncAnthropic()
+            if self.provider == "openai":
+                if not config.OPENAI_API_KEY:
+                    raise ValueError("OPENAI_API_KEY is not set")
+                self.client = openai.AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+            else:
+                self.client = anthropic.AsyncAnthropic()
         except Exception as e:  # no credentials resolvable at construction time
             self.disabled_reason = str(e)
 
     async def probe(self) -> None:
-        """Cheap credential check (lists one model, no tokens) so the UI shows the real state."""
+        """Cheap credential check (no tokens) so the UI shows the real state."""
         if not self.enabled:
             return
         try:
-            await self.client.models.list(limit=1)
-        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError, TypeError) as e:
+            if self.provider == "openai":
+                await self.client.models.retrieve(self.model)
+            else:
+                await self.client.models.list(limit=1)
+        except (*AUTH_ERRORS, TypeError) as e:
             self._disable(str(e))
-        except anthropic.APIError as e:
-            log.info("Claude probe inconclusive: %s", e)
+        except openai.NotFoundError:
+            self._disable(f"OpenAI model {self.model!r} not found; set OPENAI_MODEL in .env")
+        except API_ERRORS as e:
+            log.info("%s probe inconclusive: %s", self.name, e)
 
     @property
     def enabled(self) -> bool:
         return self.client is not None and not self.disabled_reason
 
     def _disable(self, reason: str) -> None:
-        log.warning("Claude disabled, using fallback summaries: %s", reason)
+        log.warning("%s disabled, using fallback summaries: %s", self.name, reason)
         self.disabled_reason = reason
+
+    # ------------------------------------------------------------ provider calls
+    # Paper content travels as provider-neutral parts: {"text": ...} or {"pdf": base64, "title": ...}.
+
+    def _openai_reasoning(self, effort: str) -> dict:
+        # only reasoning models (gpt-5*, o-series) accept an effort setting
+        return {"reasoning": {"effort": effort}} if re.match(r"(gpt-5|o\d)", self.model) else {}
+
+    @staticmethod
+    def _openai_content(parts: list[dict]) -> list[dict]:
+        return [
+            {"type": "input_file", "filename": "paper.pdf", "file_data": f"data:application/pdf;base64,{p['pdf']}"}
+            if "pdf" in p else {"type": "input_text", "text": p["text"]}
+            for p in parts
+        ]
+
+    @staticmethod
+    def _claude_content(parts: list[dict]) -> list[dict]:
+        return [
+            {"type": "document", "title": p["title"], "cache_control": {"type": "ephemeral"},
+             "source": {"type": "base64", "media_type": "application/pdf", "data": p["pdf"]}}
+            if "pdf" in p else {"type": "text", "text": p["text"]}
+            for p in parts
+        ]
+
+    async def _json(self, *, system: str, prompt: str, schema: dict, effort: str) -> dict:
+        """One structured-output call; raises Refused if the model declines."""
+        if self.provider == "openai":
+            resp = await self.client.responses.create(
+                model=self.model, instructions=system, input=prompt, max_output_tokens=8000,
+                text={"format": {"type": "json_schema", "name": "card", "schema": schema, "strict": True}},
+                **self._openai_reasoning(effort),
+            )
+            if _refused(resp):
+                raise Refused("openai")
+            return json.loads(resp.output_text)
+        resp = await self.client.messages.create(
+            model=self.model, max_tokens=8000, system=system,
+            messages=[{"role": "user", "content": prompt}],
+            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+            **FALLBACK_KW,
+        )
+        if resp.stop_reason == "refusal":
+            raise Refused(getattr(resp.stop_details, "category", None))
+        return json.loads(next(b.text for b in resp.content if b.type == "text"))
+
+    async def _text(self, *, system: str, messages: list[dict], effort: str, max_tokens: int = 32000) -> str:
+        """Free-text answer. messages: [{"role", "content": str or neutral parts}]."""
+        if self.provider == "openai":
+            resp = await self.client.responses.create(
+                model=self.model, instructions=system, max_output_tokens=max_tokens,
+                input=[{"role": m["role"], "content": m["content"] if isinstance(m["content"], str)
+                        else self._openai_content(m["content"])} for m in messages],
+                **self._openai_reasoning(effort),
+            )
+            if _refused(resp):
+                return f"_{self.name} declined to answer this request._"
+            return resp.output_text.strip()
+        async with self.client.messages.stream(
+            model=self.model, max_tokens=max_tokens, system=system,
+            messages=[{"role": m["role"], "content": m["content"] if isinstance(m["content"], str)
+                       else self._claude_content(m["content"])} for m in messages],
+            output_config={"effort": effort},
+            **FALLBACK_KW,
+        ) as stream:
+            msg = await stream.get_final_message()
+        if msg.stop_reason == "refusal":
+            return f"_{self.name} declined to answer this request._"
+        return "".join(b.text for b in msg.content if b.type == "text").strip()
 
     # ------------------------------------------------------------ cards
 
@@ -96,19 +213,21 @@ class Summarizer:
         """Return (summary, summarized_by)."""
         if self.enabled:
             try:
-                return await self._claude_card(topic, paper), config.MODEL
-            except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+                return await self._ai_card(topic, paper), self.model
+            except AUTH_ERRORS as e:
                 self._disable(f"{type(e).__name__}: {e}")
             except TypeError as e:  # SDK raises this when no credentials could be resolved
                 if "auth" in str(e).lower() or "api_key" in str(e).lower():
                     self._disable(str(e))
                 else:
                     raise
-            except (anthropic.APIError, Refused, ValueError) as e:
-                log.warning("Claude card failed for %r: %s", paper["title"][:60], e)
+            except (*API_ERRORS, Refused, ValueError) as e:
+                log.warning("%s card failed for %r: %s", self.name, paper["title"][:60], e)
+                if "insufficient_quota" in str(getattr(e, "body", "")):  # no credits: stop retrying every card
+                    self._disable(explain(e))
         return fallback_card(topic, paper), "fallback"
 
-    async def _claude_card(self, topic: dict, paper: dict) -> dict:
+    async def _ai_card(self, topic: dict, paper: dict) -> dict:
         subtopics = topic.get("subtopics") or []
         if topic.get("kind") == "researcher":
             # Score fit with the lab's known work: this is what exposes papers that author
@@ -120,6 +239,9 @@ class Summarizer:
                 "fits this lab's research areas: 7-10 if it is clearly their kind of work, 0-2 if it "
                 "looks like a different person with the same name (unrelated field).\n\n"
             )
+            if "Google Scholar" in paper.get("sources", []):
+                context += ("This paper is listed on the researcher's own Google Scholar profile, so it "
+                            "is theirs: do not treat it as a namesake's.\n\n")
         else:
             context = (
                 f"<research_topic>\nName: {topic['name']}\nDescription: {topic.get('description', '')}\n"
@@ -133,71 +255,34 @@ class Summarizer:
             f"Abstract: {paper.get('abstract') or '(no abstract available)'}\n</paper>\n\n"
             "Write the briefing card. Tag only the subtopics that genuinely apply."
         )
-        resp = await self.client.messages.create(
-            model=config.MODEL,
-            max_tokens=8000,
-            system=CARD_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-            output_config={
-                "effort": config.SUMMARY_EFFORT,
-                "format": {"type": "json_schema", "schema": self._card_schema(subtopics)},
-            },
-            **FALLBACK_KW,
-        )
-        if resp.stop_reason == "refusal":
-            raise Refused(getattr(resp.stop_details, "category", None))
-        text = next(b.text for b in resp.content if b.type == "text")
-        data = json.loads(text)
+        data = await self._json(system=CARD_SYSTEM, prompt=prompt, schema=self._card_schema(subtopics),
+                                effort=config.SUMMARY_EFFORT)
         data["relevance"] = max(0, min(10, int(data.get("relevance", 0))))
         return data
 
     # ------------------------------------------------------------ deep dive & Q&A
 
     async def _paper_content(self, paper: dict) -> list[dict]:
-        """PDF as a document block when we can fetch it, else the abstract as text."""
+        """The PDF when we can fetch it, else the abstract, as provider-neutral parts."""
         if paper.get("pdf_url"):
             try:
                 async with httpx.AsyncClient(follow_redirects=True, timeout=60) as c:
                     r = await c.get(paper["pdf_url"], headers={"User-Agent": "Frontline/0.1"})
                 if (r.status_code == 200 and r.content[:4] == b"%PDF"
                         and len(r.content) < 30 * 1024 * 1024):
-                    return [{
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": base64.standard_b64encode(r.content).decode(),
-                        },
-                        "title": paper["title"],
-                        "cache_control": {"type": "ephemeral"},
-                    }]
+                    return [{"pdf": base64.standard_b64encode(r.content).decode(), "title": paper["title"]}]
             except httpx.HTTPError as e:
                 log.info("PDF fetch failed (%s), using abstract", e)
         return [{
-            "type": "text",
             "text": f"Title: {paper['title']}\nAuthors: {', '.join(paper.get('authors', []))}\n"
                     f"Abstract (full text unavailable): {paper.get('abstract', '')}",
         }]
 
-    async def _stream_text(self, *, system: str, messages: list, effort: str) -> str:
-        async with self.client.messages.stream(
-            model=config.MODEL,
-            max_tokens=32000,
-            system=system,
-            messages=messages,
-            output_config={"effort": effort},
-            **FALLBACK_KW,
-        ) as stream:
-            msg = await stream.get_final_message()
-        if msg.stop_reason == "refusal":
-            return "_Claude declined to answer this request._"
-        return "".join(b.text for b in msg.content if b.type == "text").strip()
-
     async def deep_dive(self, topic: dict, paper: dict) -> str:
         if not self.enabled:
-            return "_Deep dives need Claude credentials — set `ANTHROPIC_API_KEY` in `.env` and restart._"
+            return f"_Deep dives need an AI key: set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in `.env` and restart ({self.disabled_reason or 'no key'})._"
         content = await self._paper_content(paper)
-        content.append({"type": "text", "text": (
+        content.append({"text": (
             f"I follow research on **{topic['name']}** ({topic.get('description', '')}).\n\n"
             "Give me a deep-dive briefing on this paper in Markdown with these sections:\n"
             "## Core idea\n## What's new vs. prior work\n## Method (with the key equations or "
@@ -206,7 +291,7 @@ class Summarizer:
             "## Ideas worth stealing\n## Verdict — should I read the full paper? (one line)\n\n"
             "Be specific and dense; skip filler. If you only have the abstract, say so at the top."
         )})
-        return await self._stream_text(
+        return await self._text(
             system="You are an expert research analyst writing for a researcher in the field.",
             messages=[{"role": "user", "content": content}],
             effort=config.DEEP_DIVE_EFFORT,
@@ -214,9 +299,9 @@ class Summarizer:
 
     async def ask(self, paper: dict, question: str, history: list[dict]) -> str:
         if not self.enabled:
-            return "_Q&A needs Claude credentials — set `ANTHROPIC_API_KEY` in `.env` and restart._"
+            return f"_Q&A needs an AI key: set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in `.env` and restart ({self.disabled_reason or 'no key'})._"
         content = await self._paper_content(paper)
-        content.append({"type": "text", "text": "This is the paper we'll discuss."})
+        content.append({"text": "This is the paper we'll discuss."})
         messages = [
             {"role": "user", "content": content},
             {"role": "assistant", "content": "Got it — ask me anything about this paper."},
@@ -226,7 +311,7 @@ class Summarizer:
                 messages += [{"role": "user", "content": turn["q"]},
                              {"role": "assistant", "content": turn["a"]}]
         messages.append({"role": "user", "content": question})
-        return await self._stream_text(
+        return await self._text(
             system="Answer questions about the provided paper precisely and concisely, citing "
                    "sections or numbers from it. Say clearly when the paper doesn't cover something.",
             messages=messages,
@@ -249,9 +334,7 @@ class Summarizer:
                 f"Subtopics: {', '.join(s.get('subtopics', []))}"
             )
         try:
-            resp = await self.client.messages.create(
-                model=config.MODEL,
-                max_tokens=16000,
+            return await self._text(
                 system="You write tight, insightful research digests for busy researchers.",
                 messages=[{"role": "user", "content": (
                     "Here are the new papers found in today's sweep:\n\n" + "\n".join(lines) +
@@ -261,12 +344,9 @@ class Summarizer:
                     "### Worth watching — anything surprising, contrarian or a new direction\n"
                     "No preamble."
                 )}],
-                output_config={"effort": "medium"},
-                **FALLBACK_KW,
+                effort="medium", max_tokens=16000,
             )
-            if resp.stop_reason != "refusal":
-                return "".join(b.text for b in resp.content if b.type == "text").strip()
-        except anthropic.APIError as e:
+        except API_ERRORS as e:
             log.warning("digest failed: %s", e)
         return fallback_digest(items)
 
@@ -297,7 +377,7 @@ def fallback_card(topic: dict, paper: dict) -> dict:
             "subtopics": subtopics,
             "paper_type": "method",
             "relevance": 6,
-            "relevance_reason": f"From {topic['name']}'s lab; add Claude credentials for AI summaries.",
+            "relevance_reason": f"From {topic['name']}'s lab; add an AI key for AI summaries.",
         }
     return {
         "tldr": sents[0] if sents else paper["title"],
@@ -307,7 +387,7 @@ def fallback_card(topic: dict, paper: dict) -> dict:
         "paper_type": "method",
         "relevance": min(10, 1 + 2 * hits + (3 if in_title else 0) + (1 if paper.get("arxiv_id") else 0)),
         "relevance_reason": f"Keyword match ({hits} topic phrase{'s' if hits != 1 else ''}); "
-                            "add Claude credentials for AI summaries.",
+                            "add an AI key for AI summaries.",
     }
 
 

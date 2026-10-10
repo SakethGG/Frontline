@@ -58,6 +58,7 @@ function toast(msg, ms = 2600) {
 }
 function fmtDate(iso) {
   if (!iso) return "";
+  if (iso.length === 4) return iso;  // Google Scholar only gives the year
   const d = new Date(iso.length === 10 ? iso + "T00:00:00" : iso);
   return isNaN(d) ? iso : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
 }
@@ -163,12 +164,20 @@ function renderTopics() {
       ${isPerson(t) ? avatar(name) : ""}${esc(name)}${n ? `<span class="dot" title="${n} new">${n}</span>` : ""}
     </button>`;
   const shown = state.topics.filter((t) => t.enabled || t.paper_count);
-  // keyword topics first, then followed researchers
-  const ordered = [...shown.filter((t) => !isPerson(t)), ...shown.filter(isPerson)];
+  // keyword topics in the pill row; followed researchers in the left sidebar
   $("#topics").innerHTML = (state.topics.length > 1 ? pill(null, "All", totalNew) : "") +
-    ordered.map((t) => pill(t.id, t.name, t.unread_count, t)).join("") +
-    `<button class="topic-pill add" id="addTopicPill" title="Add a research topic">+ Topic</button>` +
-    `<button class="topic-pill add" id="followPill" title="Follow a researcher's lab">+ Researcher</button>`;
+    shown.filter((t) => !isPerson(t)).map((t) => pill(t.id, t.name, t.unread_count, t)).join("") +
+    `<button class="topic-pill add" id="addTopicPill" title="Add a research topic">+ Topic</button>`;
+  const people = shown.filter(isPerson);
+  $("#people").innerHTML = people.map((t) => `
+    <button class="person-row ${state.topicId === t.id ? "active" : ""}" data-topic="${t.id}"
+      title="Papers from ${esc(t.name)}'s lab${t.profile?.institution ? ` · ${esc(t.profile.institution)}` : ""}">
+      ${avatar(t.name)}
+      <span class="person-main"><span class="person-name">${esc(t.name)}</span>${t.profile?.institution ? `<span class="person-inst">${esc(t.profile.institution)}</span>` : ""}</span>
+      ${t.unread_count ? `<span class="dot" title="${t.unread_count} new">${t.unread_count}</span>` : ""}
+    </button>`).join("") +
+    (people.length ? "" : `<p class="people-empty">Follow a researcher to see every paper from their lab.</p>`) +
+    `<button class="person-row add" id="followPill" title="Follow a researcher's lab">+ Researcher</button>`;
   renderProfile();
   // with a single topic there is no "All" pill; treat it as selected
   if (state.topics.length === 1 && state.topicId === null) $(".topic-pill[data-topic]")?.classList.add("active");
@@ -424,13 +433,13 @@ async function loadDive(refresh) {
   const p = state.items[state.readerIdx];
   if (!p || (dives.has(p.id) && !refresh)) return;
   $("#rRegen").hidden = true;
-  $("#rDive").innerHTML = `<div class="loading">Claude is reading the full paper — this can take a minute…</div>`;
+  $("#rDive").innerHTML = `<div class="loading">${esc(state.status?.provider || "The AI")} is reading the full paper — this can take a minute…</div>`;
   try {
     const { markdown } = await api(`/api/papers/${p.id}/deep-dive${refresh ? "?refresh=true" : ""}`, { method: "POST" });
-    if (state.status?.claude) dives.set(p.id, markdown);
+    if (state.status?.ai) dives.set(p.id, markdown);
     if (state.items[state.readerIdx]?.id !== p.id) return;
     $("#rDive").innerHTML = md(markdown);
-    $("#rRegen").hidden = !state.status?.claude;
+    $("#rRegen").hidden = !state.status?.ai;
   } catch (e) { $("#rDive").innerHTML = `<p>Couldn't generate the deep dive: ${esc(e.message)}</p>`; }
 }
 
@@ -441,7 +450,7 @@ function renderChat(pending) {
   if (!p) return;
   const hist = chats.get(p.id) || [];
   $("#rChat").innerHTML = (!hist.length && !pending
-    ? `<p class="hint">Claude reads the full PDF when it's available and answers questions about it.</p>
+    ? `<p class="hint">${esc(state.status?.provider || "The AI")} reads the full PDF when it's available and answers questions about it.</p>
        <div class="suggest">${SUGGESTIONS.map((q) => `<button class="chip" data-suggest="${esc(q)}">${esc(q)}</button>`).join("")}</div>`
     : "") +
     hist.map((t) => `<div class="msg q">${esc(t.q)}</div><div class="msg a md">${md(t.a)}</div>`).join("") +
@@ -474,7 +483,7 @@ function openSettings() {
     </button></li>`).join("") || `<li class="hint">No topics yet.</li>`;
   const s = state.status || {};
   $("#statusBox").innerHTML = `
-    <div>Summaries: ${s.claude ? `<span class="ok">Claude (${esc(s.model)})</span>` : `<span class="warn">basic — add ANTHROPIC_API_KEY to .env for AI summaries</span>`}</div>
+    <div>Summaries: ${s.ai ? `<span class="ok">${esc(s.provider)} (${esc(s.model)})</span>` : `<span class="warn">basic: ${esc(s.provider)} isn't set up${s.ai_reason ? ` (${esc(s.ai_reason)})` : ""}. Add ${s.provider === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"} to .env and restart</span>`}</div>
     <div>Phone / email alerts: ${s.channels?.length ? `<span class="ok">${s.channels.join(", ")}</span>` : "off — set NTFY_TOPIC or SMTP_* in .env"}</div>
     <div>Automatic sweeps: ${s.auto_sweep_hours > 0 ? `<span class="ok">every ${s.auto_sweep_hours} h</span>` : "off — set FRONTLINE_AUTO_SWEEP_HOURS in .env"}</div>`;
   $("#settingsModal").showModal();
@@ -553,7 +562,7 @@ function renderProfile() {
       </div>
       ${pr.areas?.length ? `<div class="areas">${pr.areas.map((a) => `<span class="area">${esc(a)}</span>`).join("")}</div>` : ""}
       <div class="links">
-        <a href="https://scholar.google.com/scholar?q=${q}" target="_blank" rel="noopener">Google Scholar ↗</a>
+        <a href="${pr.scholar_id ? `https://scholar.google.com/citations?user=${esc(pr.scholar_id)}` : `https://scholar.google.com/scholar?q=${q}`}" target="_blank" rel="noopener">Google Scholar ↗</a>
         <a href="https://arxiv.org/search/?searchtype=author&query=${encodeURIComponent(t.name)}" target="_blank" rel="noopener">arXiv ↗</a>
         ${pr.openalex_id ? `<a href="https://openalex.org/authors/${esc(pr.openalex_id)}" target="_blank" rel="noopener">OpenAlex ↗</a>` : ""}
         ${pr.orcid ? `<a href="https://orcid.org/${esc(pr.orcid)}" target="_blank" rel="noopener">ORCID ↗</a>` : ""}
@@ -576,7 +585,8 @@ async function searchResearchers() {
   const name = $("#followName").value.trim();
   if (name.length < 3) return toast("Type at least 3 characters");
   const list = $("#candidates");
-  list.innerHTML = `<li class="loading">Looking up “${esc(name)}”…</li>`;
+  const isLink = name.includes("scholar.google.");
+  list.innerHTML = `<li class="loading">${isLink ? "Reading their Google Scholar profile…" : `Looking up “${esc(name)}”…`}</li>`;
   let found;
   try { found = await api(`/api/researchers/search?name=${encodeURIComponent(name)}`); }
   catch (e) { list.innerHTML = `<li class="hint">Search failed: ${esc(e.message)}</li>`; return; }
@@ -587,18 +597,20 @@ async function searchResearchers() {
         <div class="c-name">${esc(c.name)}</div>
         <div class="c-sub">${esc(c.institution || "Institution unknown")} · h-index ${c.h_index} · ${c.works_count} works</div>
         ${c.areas.length ? `<div class="c-areas">Works on <b>${c.areas.slice(0, 3).map(esc).join("</b>, <b>")}</b></div>` : ""}
+        ${c.scholar_id ? `<div class="c-areas">From their <b>Google Scholar</b> profile${c.openalex_matched ? ` · also found in OpenAlex (${c.openalex_matched} papers matched)` : ""}. New papers are also searched on arXiv, OpenAlex and Semantic Scholar.</div>` : ""}
       </div>
       ${c.followed_topic_id
         ? `<button class="ghost-btn" data-view-feed="${c.followed_topic_id}">Following ›</button>`
-        : `<button class="primary-btn" data-follow="${esc(c.openalex_id)}">Follow</button>`}
-    </li>`).join("") || `<li class="hint">No researchers found for “${esc(name)}”. Try their full name.</li>`;
+        : `<button class="primary-btn" data-follow="${esc(c.openalex_id)}" data-scholar="${esc(c.scholar_id || "")}">Follow</button>`}
+    </li>`).join("") || `<li class="hint">${isLink ? "Couldn't match that Scholar profile to an author." : `No researchers found for “${esc(name)}”. Try their full name, or paste their Google Scholar profile link.`}</li>`;
 }
 
-async function follow(openalexId, btn) {
+async function follow(openalexId, btn, scholarId) {
   btn.disabled = true;
   btn.textContent = "Following…";
   try {
-    const { topic, sweep_started } = await api("/api/researchers", { method: "POST", body: { openalex_id: openalexId } });
+    const body = { openalex_id: openalexId, ...(scholarId ? { scholar_id: scholarId } : {}) };
+    const { topic, sweep_started } = await api("/api/researchers", { method: "POST", body });
     $("#followModal").close();
     $("#settingsModal").close();
     toast(sweep_started
@@ -665,6 +677,11 @@ function bind() {
     if (e.target.closest("#followPill")) return openFollow();
     const b = e.target.closest("[data-topic]");
     if (b) go({ topicId: b.dataset.topic ? +b.dataset.topic : null, subtopic: null });
+  };
+  $("#people").onclick = (e) => {
+    if (e.target.closest("#followPill")) return openFollow();
+    const b = e.target.closest("[data-topic]");
+    if (b) go({ topicId: +b.dataset.topic, subtopic: null });
   };
   $("#viewTabs").onclick = (e) => {
     const b = e.target.closest("[data-view]");
@@ -733,7 +750,7 @@ function bind() {
   $("#followForm").onsubmit = (e) => { e.preventDefault(); searchResearchers(); };
   $("#candidates").onclick = (e) => {
     const f = e.target.closest("[data-follow]");
-    if (f) return follow(f.dataset.follow, f);
+    if (f) return follow(f.dataset.follow, f, f.dataset.scholar);
     const v = e.target.closest("[data-view-feed]");
     if (v) { $("#followModal").close(); $("#settingsModal").close(); go({ topicId: +v.dataset.viewFeed, subtopic: null }); }
   };

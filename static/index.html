@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=7">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -50,6 +50,13 @@
     <div class="progress-log" id="progressLog"></div>
   </section>
 
+  <div class="layout">
+  <!-- Followed researchers: left sidebar, one per row -->
+  <aside class="people" aria-label="Followed researchers">
+    <h2 class="people-title">Researchers</h2>
+    <nav class="people-list" id="people"></nav>
+  </aside>
+
   <main class="page">
     <!-- 2. Briefing: one compact line, expandable -->
     <section class="briefing" id="briefing" hidden>
@@ -68,7 +75,7 @@
     </section>
 
     <!-- 3. Topics (pills) -->
-    <nav class="topics" id="topics" aria-label="Topics and followed researchers"></nav>
+    <nav class="topics" id="topics" aria-label="Topics"></nav>
 
     <!-- Followed researcher: profile header (only when one is selected) -->
     <section class="profile" id="profile" hidden></section>
@@ -81,7 +88,7 @@
         <button class="tab" role="tab" data-view="starred">Starred <span class="badge" id="countStarred"></span></button>
       </div>
       <div class="view-controls">
-        <label class="switch" title="Hide papers Claude rated below 5/10">
+        <label class="switch" title="Hide papers the AI rated below 5/10">
           <input type="checkbox" id="relevantOnly"><span class="track"></span> Relevant only
         </label>
         <select id="sort" aria-label="Sort">
@@ -99,6 +106,7 @@
     <div class="empty" id="empty" hidden></div>
     <div class="more-wrap"><button class="ghost-btn" id="moreBtn" hidden>Show more</button></div>
   </main>
+  </div>
 
   <!-- Reader panel: everything about one paper, with prev/next -->
   <div class="scrim" id="scrim" hidden></div>
@@ -166,9 +174,9 @@
       <button class="icon-btn" data-close aria-label="Close">✕</button>
     </div>
     <div class="modal-body">
-      <p class="hint">Every paper they co-author shows up here, so you see everything coming out of their lab. Pick the right person: many names are shared.</p>
+      <p class="hint">Every paper they co-author shows up here, so you see everything coming out of their lab. Pick the right person: many names are shared. Can't find them by name? Paste their Google Scholar profile link instead: their Scholar papers are used as-is, and new papers found elsewhere are only kept if they share co-authors with them.</p>
       <form class="follow-search" id="followForm">
-        <input id="followName" placeholder="e.g. Sangbae Kim" autocomplete="off" aria-label="Researcher name">
+        <input id="followName" placeholder="Name, or paste a Google Scholar profile link" autocomplete="off" aria-label="Researcher name or Google Scholar link">
         <button class="primary-btn" type="submit">Search</button>
       </form>
       <ul class="candidates" id="candidates"></ul>
@@ -184,7 +192,7 @@
       </div>
       <div class="modal-body form">
         <label>Name<input name="name" required placeholder="e.g. Legged Robots"></label>
-        <label>What are you interested in? <small>Claude uses this to score relevance</small>
+        <label>What are you interested in? <small>The AI uses this to score relevance</small>
           <textarea name="description" rows="3" placeholder="e.g. Learning-based control and co-design for quadrupeds and humanoids"></textarea></label>
         <label>Search phrases <small>one per line</small>
           <textarea name="queries" rows="4" required placeholder="legged robot&#10;quadruped&#10;humanoid locomotion"></textarea></label>
@@ -227,6 +235,6 @@
   </dialog>
 
   <div class="toast" id="toast" hidden></div>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=6"></script>
 </body>
 </html>

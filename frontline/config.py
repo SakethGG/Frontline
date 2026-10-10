@@ -24,6 +24,11 @@ def _float(name: str, default: float) -> float:
 DB_PATH = Path(os.getenv("FRONTLINE_DB") or ROOT / "data" / "frontline.db")
 STATIC_DIR = ROOT / "static"
 
+# Which AI writes summaries: "claude", "openai", or "auto" (OpenAI if only its key is set)
+LLM_PROVIDER = (os.getenv("FRONTLINE_LLM") or "auto").strip().lower()
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or ""
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or ""
+OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-5-mini"
 MODEL = os.getenv("FRONTLINE_MODEL") or "claude-opus-5-5"
 SUMMARY_EFFORT = os.getenv("FRONTLINE_SUMMARY_EFFORT") or "low"
 DEEP_DIVE_EFFORT = os.getenv("FRONTLINE_DEEP_DIVE_EFFORT") or "medium"

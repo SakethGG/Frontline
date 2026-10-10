@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, notify, researchers
-from .summarizer import summarizer
+from . import config, db, notify, researchers, sources
+from .summarizer import API_ERRORS, explain, summarizer
 from .sweep import auto_sweep_loop, manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -31,6 +31,15 @@ app = FastAPI(title="Frontline", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 
+@app.middleware("http")
+async def revalidate_ui(request, call_next):
+    """Make the window re-check UI files on every load so edits show up without clearing its cache."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def index():
     return FileResponse(config.STATIC_DIR / "index.html")
@@ -39,9 +48,10 @@ def index():
 @app.get("/api/status")
 def status():
     return {
-        "claude": summarizer.enabled,
-        "claude_reason": summarizer.disabled_reason,
-        "model": config.MODEL,
+        "ai": summarizer.enabled,
+        "ai_reason": summarizer.disabled_reason,
+        "provider": summarizer.name,
+        "model": summarizer.model,
         "channels": notify.channels(),
         "auto_sweep_hours": config.AUTO_SWEEP_HOURS,
         "sweep": manager.state,
@@ -117,31 +127,49 @@ async def search_researchers(name: str):
     if len(name.strip()) < 3:
         raise HTTPException(422, "Type at least 3 characters")
     try:
-        candidates = await researchers.search(name.strip())
+        if "scholar.google." in name:  # a pasted Google Scholar profile link
+            candidates = await researchers.search_scholar(name.strip())
+        else:
+            candidates = await researchers.search(name.strip())
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Author search failed: {e}")
-    followed = {(t.get("author_ids") or {}).get("openalex"): t["id"]
-                for t in db.list_topics() if t["kind"] == "researcher"}
-    return [{**c, "followed_topic_id": followed.get(c["openalex_id"])} for c in candidates]
+    return [{**c, "followed_topic_id": _followed_topic_id(c.get("scholar_id", ""), c["openalex_id"])}
+            for c in candidates]
+
+
+def _followed_topic_id(scholar_id: str, openalex_id: str) -> int | None:
+    for t in db.list_topics():
+        ids = t.get("author_ids") or {}
+        if t["kind"] == "researcher" and (
+                (scholar_id and ids.get("scholar") == scholar_id) or (openalex_id and ids.get("openalex") == openalex_id)):
+            return t["id"]
+    return None
 
 
 class FollowIn(BaseModel):
-    openalex_id: str
+    openalex_id: str = ""
+    scholar_id: str = Field("", pattern=r"^([\w-]{12})?$")
     lookback_days: int = Field(config.RESEARCHER_LOOKBACK_DAYS, ge=7, le=730)
 
 
 @app.post("/api/researchers")
 async def follow_researcher(body: FollowIn):
-    for t in db.list_topics():
-        if (t.get("author_ids") or {}).get("openalex") == body.openalex_id:
-            raise HTTPException(409, f"Already following {t['name']}")
+    if not (body.scholar_id or body.openalex_id):
+        raise HTTPException(422, "Give a Google Scholar or OpenAlex author ID")
     try:
-        profile = await researchers.resolve(body.openalex_id)
-    except ValueError as e:
+        if body.scholar_id:  # their Scholar profile has the final say
+            profile, scholar_titles = await researchers.scholar_profile(body.scholar_id)
+        else:
+            profile, scholar_titles = await researchers.resolve(body.openalex_id), None
+    except (ValueError, sources.ScholarUnavailable) as e:
         raise HTTPException(422, str(e))
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Could not load that author: {e}")
-    categories = await researchers.learn_arxiv_categories(profile)
+    if (tid := _followed_topic_id(profile.get("scholar_id", ""), profile["openalex_id"])) is not None:
+        raise HTTPException(409, f"Already following {db.get_topic(tid)['name']}")
+    categories = await researchers.learn_arxiv_categories(profile, scholar_titles)
     d = researchers.topic_fields(profile, categories)
     d["lookback_days"] = body.lookback_days
     d["slug"] = _unique_slug("researcher-" + (re.sub(r"[^a-z0-9]+", "-", profile["name"].lower()).strip("-") or "x"))
@@ -251,7 +279,10 @@ async def deep_dive(paper_id: int, refresh: bool = False):
     p, topic = _paper_and_topic(paper_id)
     if p["deep_dive"] and not refresh:
         return {"markdown": p["deep_dive"]}
-    md = await summarizer.deep_dive(topic, p)
+    try:
+        md = await summarizer.deep_dive(topic, p)
+    except API_ERRORS as e:
+        raise HTTPException(502, explain(e))
     if summarizer.enabled:
         db.update_paper(paper_id, deep_dive=md)
     return {"markdown": md}
@@ -265,7 +296,10 @@ class AskIn(BaseModel):
 @app.post("/api/papers/{paper_id}/ask")
 async def ask(paper_id: int, body: AskIn):
     p, _ = _paper_and_topic(paper_id)
-    return {"answer": await summarizer.ask(p, body.question, body.history)}
+    try:
+        return {"answer": await summarizer.ask(p, body.question, body.history)}
+    except API_ERRORS as e:
+        raise HTTPException(502, explain(e))
 
 
 @app.get("/api/export.md", response_class=PlainTextResponse)

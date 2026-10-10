@@ -7,8 +7,10 @@ Every fetcher returns a list of normalized paper dicts:
 
 import asyncio
 import hashlib
+import html
 import logging
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import date
 
@@ -262,8 +264,134 @@ async def fetch_openalex_author(client: httpx.AsyncClient, topic: dict, since: d
                     continue
             seen.add(w["id"])
             if p := openalex_work(w):
+                p["verified"] = i == 0  # listed under their own author ID
                 papers.append(p)
     return papers
+
+
+async def fetch_s2_author(client: httpx.AsyncClient, topic: dict, since: date) -> list[dict]:
+    """Recent papers of Semantic Scholar authors with this name (only for Scholar-linked
+    researchers, whose co-authors are used to drop namesakes afterwards)."""
+    if not (topic.get("author_ids") or {}).get("scholar"):
+        return []
+    base = "https://api.semanticscholar.org/graph/v1"
+    r = await s2_get(client, f"{base}/author/search", {"query": topic["name"], "fields": "name", "limit": 5})
+    me = surname(topic["name"])
+    ids = [a["authorId"] for a in r.json().get("data") or [] if surname(a.get("name", "")) == me][:3]
+    papers = []
+    for aid in ids:  # one at a time: the public API is rate limited
+        r = await s2_get(client, f"{base}/author/{aid}/papers", {"fields": S2_PAPER_FIELDS, "limit": 500})
+        papers += [s2_paper(d) for d in r.json().get("data") or []
+                   if d.get("title") and (d.get("publicationDate") or "") >= since.isoformat()]
+    return papers
+
+
+# ---------------------------------------------------------------- Google Scholar
+# Scholar has no API and its author search needs a sign-in, but public profile pages can be
+# read. For a researcher followed by Scholar link, their profile is the final say: every
+# recent paper on it is included, and papers found elsewhere must look like theirs.
+
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+ARXIV_ID_RE = re.compile(r"arXiv:(\d{4}\.\d{4,5})", re.I)
+
+
+class ScholarUnavailable(Exception):
+    """Scholar didn't return the profile (usually rate limiting or a sign-in wall)."""
+
+
+def _ascii_words(name: str) -> list[str]:
+    return re.findall(r"[a-z]+", unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower())
+
+
+def surname(name: str) -> str:
+    words = _ascii_words(name)
+    return words[-1] if words else ""
+
+
+def author_key(name: str) -> str:
+    """First initial + surname, so 'Alex Krizhevsky' and Scholar's 'A Krizhevsky' match."""
+    words = _ascii_words(name)
+    return f"{words[0][0]} {words[-1]}" if len(words) >= 2 else ""
+
+
+def _strip_tags(s: str) -> str:
+    return _clean(html.unescape(re.sub(r"<[^>]+>", "", s)))
+
+
+async def scholar_page(client: httpx.AsyncClient, uid: str, sortby: str = "") -> dict:
+    """A public Scholar profile: name, affiliation, interests, stats and up to 100 papers
+    (most cited first, or newest first with sortby="pubdate")."""
+    params = {"user": uid, "hl": "en", "pagesize": 100, **({"sortby": sortby} if sortby else {})}
+    try:
+        r = await client.get("https://scholar.google.com/citations", params=params, timeout=30,
+                             headers={"User-Agent": BROWSER_UA, "Accept-Language": "en-US,en;q=0.9"})
+    except httpx.HTTPError as e:
+        raise ScholarUnavailable(f"Couldn't reach Google Scholar: {e}") from e
+    name = re.search(r'id="gsc_prf_in">(.*?)</div>', r.text, re.S)
+    if r.status_code != 200 or "accounts.google.com" in str(r.url) or not name:
+        raise ScholarUnavailable("Google Scholar didn't return that profile (it may be rate-limiting). "
+                                 "Try again in a few minutes.")
+    affiliation = re.search(r'class="gsc_prf_il">(.*?)</div>', r.text, re.S)
+    stats = [int(x) for x in re.findall(r'class="gsc_rsb_std">(\d+)<', r.text)]
+    rows = []
+    for row in re.findall(r'<tr class="gsc_a_tr">(.*?)</tr>', r.text, re.S):
+        link = re.search(r'<a href="([^"]+)" class="gsc_a_at">(.*?)</a>', row, re.S)
+        if not link:
+            continue
+        gray = re.findall(r'<div class="gs_gray">(.*?)</div>', row, re.S) + ["", ""]
+        year = re.search(r'class="gsc_a_h gsc_a_hc[^"]*">(\d{4})<', row)
+        rows.append({
+            "title": _strip_tags(link.group(2)),
+            "url": "https://scholar.google.com" + html.unescape(link.group(1)),
+            "authors": [a.strip() for a in _strip_tags(gray[0]).split(",") if a.strip() not in ("", "...")],
+            "venue": _strip_tags(re.sub(r'<span class="gs_oph">.*?</span>', "", gray[1], flags=re.S)),
+            "year": int(year.group(1)) if year else 0,
+        })
+    return {
+        "name": _strip_tags(name.group(1)),
+        "affiliation": _strip_tags(affiliation.group(1)) if affiliation else "",
+        "interests": [_strip_tags(i) for i in re.findall(r'class="gsc_prf_inta[^"]*"[^>]*>(.*?)</a>', r.text, re.S)],
+        "citations": stats[0] if stats else 0,
+        "h_index": stats[2] if len(stats) > 2 else 0,
+        "rows": rows,
+    }
+
+
+def _scholar_paper(row: dict) -> dict:
+    """A Scholar row as a paper. Abstract, exact date and PDF get merged in from the other
+    sources when they find the same title (Scholar itself only gives the year)."""
+    m = ARXIV_ID_RE.search(row["venue"])
+    arxiv_id = m.group(1) if m else ""
+    return {
+        "title": row["title"],
+        "authors": row["authors"],
+        "abstract": "",
+        "published": str(row["year"] or ""),
+        "url": f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else row["url"],
+        "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}" if arxiv_id else "",
+        "code_url": "",
+        "venue": row["venue"],
+        "arxiv_id": arxiv_id,
+        "doi": "",
+        "sources": ["Google Scholar"],
+    }
+
+
+async def fetch_scholar_author(client: httpx.AsyncClient, topic: dict, since: date) -> tuple[list[dict], set[str]]:
+    """Recent papers on their Scholar profile, plus the co-authors it lists (to vet other sources)."""
+    gs = await scholar_page(client, topic["author_ids"]["scholar"], sortby="pubdate")
+    coauthors = {author_key(a) for row in gs["rows"] for a in row["authors"]} - {author_key(topic["name"]), ""}
+    return [_scholar_paper(row) for row in gs["rows"] if row["year"] >= since.year], coauthors
+
+
+def looks_like_theirs(topic: dict, p: dict, coauthors: set[str]) -> bool:
+    """For a paper found outside their Scholar profile: their name is on it and it shares a
+    co-author with their Scholar papers (or OpenAlex lists it under their author ID)."""
+    if p.get("verified"):
+        return True
+    keys = {author_key(a) for a in p["authors"]}
+    return author_key(topic["name"]) in keys and bool(keys & coauthors)
 
 
 # ---------------------------------------------------------------- orchestration
@@ -276,6 +404,7 @@ FETCHERS = {
 AUTHOR_FETCHERS = {
     "arXiv": fetch_arxiv_author,
     "OpenAlex": fetch_openalex_author,
+    "Semantic Scholar": fetch_s2_author,
 }
 
 
@@ -291,6 +420,9 @@ def _merge(into: dict, other: dict) -> None:
         into["abstract"] = other["abstract"]
     if into.get("venue") in ("", "arXiv") and other.get("venue"):
         into["venue"] = other["venue"]
+    if len(into.get("published", "")) < len(other.get("published", "")):  # a full date beats Scholar's year
+        into["published"] = other["published"]
+    into["verified"] = into.get("verified") or other.get("verified")
     into["sources"] = sorted(set(into["sources"]) | set(other["sources"]))
 
 
@@ -311,15 +443,34 @@ async def discover(topic: dict, since: date) -> tuple[list[dict], dict]:
 
     Followed researchers are fetched by author ID and skip the keyword filter: everything
     they co-author counts (Claude's relevance score later flags misattributed papers).
+    For one followed by Google Scholar link, every recent paper on their Scholar profile is
+    kept, and papers found elsewhere must share a co-author with it.
     """
     stats: dict = {}
     researcher = is_researcher(topic)
     fetchers = AUTHOR_FETCHERS if researcher else FETCHERS
+    scholar = researcher and bool((topic.get("author_ids") or {}).get("scholar"))
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
         names = list(fetchers)
         results = await asyncio.gather(
-            *(fetchers[n](client, topic, since) for n in names), return_exceptions=True
+            *(fetchers[n](client, topic, since) for n in names),
+            *([fetch_scholar_author(client, topic, since)] if scholar else []),
+            return_exceptions=True,
         )
+    coauthors: set[str] | None = None
+    if scholar:
+        gs = results[-1]
+        if isinstance(gs, Exception):  # Scholar unreachable: fall back to the other sources as-is
+            log.warning("Google Scholar failed for %s: %s", topic["name"], gs)
+            stats["Google Scholar"] = f"error: {type(gs).__name__}"
+        else:
+            papers_gs, coauthors = gs
+            stats["Google Scholar"] = len(papers_gs)
+        # Google Scholar first so its list is the one others merge into
+        names = ["Google Scholar", *names]
+        results = [[] if isinstance(gs, Exception) else papers_gs, *results[:-1]]
+        if coauthors is None:  # without Scholar's co-authors, Semantic Scholar namesakes can't be vetted
+            results[names.index("Semantic Scholar")] = []
     by_key: dict[str, dict] = {}
     by_title: dict[str, str] = {}
     for name, res in zip(names, results):
@@ -327,7 +478,7 @@ async def discover(topic: dict, since: date) -> tuple[list[dict], dict]:
             log.warning("%s failed for %s: %s", name, topic["name"], res)
             stats[name] = f"error: {type(res).__name__}"
             continue
-        stats[name] = len(res)
+        stats.setdefault(name, len(res))
         for p in res:
             nt = normalize_title(p["title"])
             key = by_title.get(nt) or paper_key(p)
@@ -338,6 +489,8 @@ async def discover(topic: dict, since: date) -> tuple[list[dict], dict]:
                 by_title[nt] = key
     papers = []
     for key, p in by_key.items():
+        if coauthors is not None and "Google Scholar" not in p["sources"] and not looks_like_theirs(topic, p, coauthors):
+            continue
         p["paper_key"] = key
         p["keyword_hits"] = 1 if researcher else keyword_hits(topic, p)
         if p["keyword_hits"] > 0:

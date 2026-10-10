@@ -135,7 +135,47 @@ kbd {
 .progress-log { margin-top: 8px; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- page ---------- */
-.page { max-width: 1280px; margin: 0 auto; padding: 22px 24px 60px; }
+/* three columns: sidebar in the left margin, feed centred, matching empty margin on the right */
+.layout {
+  display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1280px) minmax(240px, 1fr);
+  gap: 24px; align-items: start; padding: 0 24px;
+}
+.page { grid-column: 2; min-width: 0; padding: 22px 0 60px; }
+
+/* followed researchers sidebar */
+.people {
+  grid-column: 1; justify-self: start; width: 100%; max-width: 270px;
+  position: sticky; top: 92px; margin-top: 22px; max-height: calc(100vh - 114px); display: flex; flex-direction: column;
+  background: var(--surface); border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.people-title {
+  margin: 0; padding: 10px 14px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
+  border-bottom: var(--bw) solid var(--ink); background: var(--surface-2);
+}
+.people-list {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--ink) var(--surface-2);
+}
+.person-row {
+  flex: none; display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; text-align: left;
+  border: var(--bw) solid var(--ink); border-radius: 6px; background: var(--surface); cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: transform .08s ease, box-shadow .08s ease, background-color .12s;
+}
+.person-row:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
+.person-row:active { transform: translate(2px, 2px); box-shadow: none; }
+.person-row.active { background: var(--ink); color: var(--surface); }
+.person-row.active .avatar { border-color: var(--surface); background: var(--accent); }
+.person-main { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.person-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.person-inst { font-size: 11.5px; font-weight: 500; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.person-row .dot {
+  flex: none; min-width: 22px; padding: 0 6px; height: 20px; border-radius: 4px; border: 2px solid var(--ink);
+  background: var(--accent-2); color: var(--on-accent); font-size: 11.5px; font-weight: 800; display: grid; place-items: center;
+}
+.person-row.active .dot { border-color: var(--surface); }
+.person-row.add { justify-content: center; background: transparent; border-style: dashed; box-shadow: none; color: var(--muted); font-weight: 600; }
+.person-row.add:hover { background: var(--surface-2); color: var(--text); }
+.people-empty { margin: 0; color: var(--muted); font-size: 12.5px; }
 
 /* briefing */
 .briefing {
@@ -158,8 +198,7 @@ kbd {
 .briefing-foot select { margin-left: 6px; padding: 4px 8px; border-radius: 6px; border: 2px solid var(--ink); background: var(--surface); font-weight: 500; }
 
 /* topics */
-.topics { display: flex; gap: 10px; overflow-x: auto; padding: 2px 6px 8px 2px; margin-bottom: 10px; scrollbar-width: none; }
-.topics::-webkit-scrollbar { display: none; }
+.topics { display: flex; gap: 10px; overflow-x: auto; padding: 2px 6px 8px 2px; margin-bottom: 10px; }
 .topic-pill {
   flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 6px;
   border: var(--bw) solid var(--ink); background: var(--surface); cursor: pointer; font-weight: 600; box-shadow: var(--shadow-sm);
@@ -232,8 +271,12 @@ kbd {
 .switch input:focus-visible + .track { outline: 3px solid var(--link); outline-offset: 2px; }
 
 /* subtopics */
-.subtopics { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 14px; padding: 2px 4px 6px 2px; scrollbar-width: none; }
-.subtopics::-webkit-scrollbar { display: none; }
+.subtopics { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 14px; padding: 2px 4px 6px 2px; }
+/* visible scrollbar under the pill/chip rows so overflowing items can be reached */
+.topics, .subtopics { scrollbar-width: thin; scrollbar-color: var(--ink) var(--surface-2); padding-bottom: 10px; }
+.topics::-webkit-scrollbar, .subtopics::-webkit-scrollbar { height: 10px; }
+.topics::-webkit-scrollbar-track, .subtopics::-webkit-scrollbar-track { background: var(--surface-2); border-radius: 5px; }
+.topics::-webkit-scrollbar-thumb, .subtopics::-webkit-scrollbar-thumb { background: var(--ink); border-radius: 5px; }
 .chip {
   flex: none; font-size: 12.5px; font-weight: 600; padding: 3px 11px; border-radius: 6px; cursor: pointer;
   border: 2px solid var(--ink); background: var(--surface); white-space: nowrap; box-shadow: var(--shadow-sm);
@@ -421,13 +464,23 @@ kbd {
 }
 
 /* ---------- responsive ---------- */
+/* narrower windows: sidebar becomes a scrollable row above the feed */
+@media (max-width: 1240px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .page { grid-column: 1; }
+  .people { position: static; max-height: none; margin-top: 16px; max-width: none; }
+  .people-list { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding-bottom: 10px; }
+  .person-row { width: auto; max-width: 260px; }
+  .people-empty { align-self: center; white-space: nowrap; }
+}
 @media (max-width: 760px) {
   .topbar { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
   .brand span { display: none; }
   .search-wrap { order: 3; flex-basis: 100%; max-width: none; }
   .search-kbd, #helpBtn { display: none; }
   .top-actions { margin-left: auto; }
-  .page { padding: 16px 16px 50px; }
+  .layout { padding: 0 16px; }
+  .page { padding: 16px 0 50px; }
   .progress { width: calc(100% - 32px); }
   .view-controls { width: 100%; justify-content: space-between; }
   .reader { box-shadow: none; }
