@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=9">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -177,6 +177,7 @@
       <p class="hint">Every paper they co-author shows up here, so you see everything coming out of their lab. Pick the right person: many names are shared. Can't find them by name? Paste their Google Scholar profile link instead: their Scholar papers are used as-is, and new papers found elsewhere are only kept if they share co-authors with them.</p>
       <form class="follow-search" id="followForm">
         <input id="followName" placeholder="Name, or paste a Google Scholar profile link" autocomplete="off" aria-label="Researcher name or Google Scholar link">
+        <input id="followOrg" class="org" placeholder="Organization (optional), e.g. MIT" autocomplete="off" aria-label="Organization">
         <button class="primary-btn" type="submit">Search</button>
       </form>
       <ul class="candidates" id="candidates"></ul>

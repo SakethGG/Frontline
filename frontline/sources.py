@@ -348,8 +348,12 @@ async def scholar_page(client: httpx.AsyncClient, uid: str, sortby: str = "") ->
             "venue": _strip_tags(re.sub(r'<span class="gs_oph">.*?</span>', "", gray[1], flags=re.S)),
             "year": int(year.group(1)) if year else 0,
         })
+    photo = re.search(r'<img[^>]*id="gsc_prf_pup-img"[^>]*>', r.text)
+    srcs = re.findall(r'(https://scholar\.googleusercontent\.com/citations\?[^"\s]+)', html.unescape(photo.group(0))) if photo else []
     return {
         "name": _strip_tags(name.group(1)),
+        # largest version; profiles without a photo show Scholar's default avatar, which isn't on googleusercontent
+        "photo": next((u for u in srcs if "medium_photo" in u), srcs[0] if srcs else ""),
         "affiliation": _strip_tags(affiliation.group(1)) if affiliation else "",
         "interests": [_strip_tags(i) for i in re.findall(r'class="gsc_prf_inta[^"]*"[^>]*>(.*?)</a>', r.text, re.S)],
         "citations": stats[0] if stats else 0,

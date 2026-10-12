@@ -9,6 +9,7 @@ import asyncio
 import collections
 import logging
 import re
+from datetime import date, timedelta
 
 import httpx
 
@@ -59,17 +60,74 @@ def _profile(a: dict) -> dict:
         "cited_by_count": a.get("cited_by_count") or 0,
         "h_index": stats.get("h_index") or 0,
         "areas": [t["display_name"] for t in (a.get("topics") or [])[:6]],
+        "areas_from": "topics",
         "orcid": (a.get("orcid") or "").replace("https://orcid.org/", ""),
     }
 
 
-async def search(name: str) -> list[dict]:
-    """Candidate authors for a name, most prominent first, so the user can pick the right one."""
+async def _paper_keywords(c: httpx.AsyncClient, openalex_ids: list[str]) -> dict[str, dict]:
+    """Per author: the keywords most common on their papers from the last three years, and
+    their latest paper. OpenAlex's topic labels are too coarse to tell researchers in one field
+    apart (every legged-robotics lab gets the same three); paper keywords aren't. One request
+    covers every author."""
+    ids = [i for i in openalex_ids if i]
+    if not ids:
+        return {}
+    since = (date.today() - timedelta(days=3 * 365)).isoformat()
+    try:
+        r = await _oa_get(c, "/works", {
+            "filter": f"author.id:{'|'.join(ids)},from_publication_date:{since}",
+            "select": "title,publication_year,keywords,authorships",
+            "sort": "publication_date:desc", "per-page": 200})
+    except httpx.HTTPError as e:
+        log.info("Could not load paper keywords: %s", e)
+        return {}
+    counts, latest = collections.defaultdict(collections.Counter), {}
+    for w in r.json().get("results") or []:
+        mine = {_short_id((a.get("author") or {}).get("id")) for a in w.get("authorships") or []} & set(ids)
+        for aid in mine:
+            counts[aid].update(k["display_name"] for k in w.get("keywords") or [] if k.get("display_name"))
+            latest.setdefault(aid, {"title": w.get("title") or "", "year": w.get("publication_year")})
+    return {
+        aid: {"areas": [k[:1].upper() + k[1:] for k, _ in counts[aid].most_common(6)], "latest": latest.get(aid)}
+        for aid in ids if aid in latest
+    }
+
+
+def _with_keywords(p: dict, kw: dict | None) -> dict:
+    if kw and kw["areas"]:
+        p = {**p, "areas": kw["areas"], "areas_from": "keywords"}
+    return {**p, "latest": (kw or {}).get("latest")} if kw else p
+
+
+async def search(name: str, org: str = "") -> list[dict]:
+    """Candidate authors for a name, most prominent first, so the user can pick the right one.
+
+    With an organization, only people who have ever been affiliated with a matching institution
+    are returned, those currently there first (`org_match` is "current" or "past"); if nobody
+    is, all namesakes come back, best guess first.
+    """
     async with _client() as c:
-        r = await _oa_get(c, "/authors", {"search": name, "per-page": 10})
-    out = [_profile(a) for a in r.json().get("results") or []]
-    # OpenAlex splits some people into stub profiles with a handful of works; hide those
-    return [p for p in out if p["works_count"] >= 3] or out
+        out = []
+        if org:
+            r = await _oa_get(c, "/institutions", {"search": org, "per-page": 5, "select": "id"})
+            inst = [_short_id(i["id"]) for i in r.json().get("results") or []]
+            if inst:
+                r = await _oa_get(c, "/authors", {"search": name, "per-page": 10,
+                                                  "filter": "affiliations.institution.id:" + "|".join(inst)})
+                out = [{**p, "org_match": "current" if set(p["institution_ids"]) & set(inst) else "past"}
+                       for p in map(_profile, r.json().get("results") or [])]
+                out.sort(key=lambda p: p["org_match"] == "current", reverse=True)
+        if not out:
+            r = await _oa_get(c, "/authors", {"search": name, "per-page": 10})
+            words = set(re.findall(r"[a-z]{3,}", org.lower()))
+            out = [{**p, "org_match": "current" if words and words <= set(re.findall(r"[a-z]{3,}", p["institution"].lower())) else ""}
+                   for p in map(_profile, r.json().get("results") or [])]
+            out.sort(key=lambda p: bool(p["org_match"]), reverse=True)  # stable: keeps prominence order otherwise
+        # OpenAlex splits some people into stub profiles with a handful of works; hide those
+        out = [p for p in out if p["works_count"] >= 3] or out
+        kw = await _paper_keywords(c, [p["openalex_id"] for p in out])
+    return [_with_keywords(p, kw.get(p["openalex_id"])) for p in out]
 
 
 # ---------------------------------------------------------------- Google Scholar profiles
@@ -122,10 +180,12 @@ async def scholar_profile(uid: str) -> tuple[dict, list[str]]:
         oa_id, matched = await _match_openalex(c, gs["name"], titles[:4])
         try:
             oa = _profile((await _oa_get(c, f"/authors/{oa_id}", {})).json()) if oa_id else {}
+            oa = _with_keywords(oa, (await _paper_keywords(c, [oa_id])).get(oa_id)) if oa else {}
         except httpx.HTTPError:  # OpenAlex is optional here; Scholar has the final say
             oa = {}
     profile = {
         "scholar_id": uid,
+        "photo_url": gs["photo"],
         "openalex_id": oa_id,
         "openalex_matched": matched,
         "name": gs["name"],
@@ -134,7 +194,9 @@ async def scholar_profile(uid: str) -> tuple[dict, list[str]]:
         "works_count": oa.get("works_count") or len(gs["rows"]),
         "cited_by_count": gs["citations"] or oa.get("cited_by_count", 0),
         "h_index": gs["h_index"] or oa.get("h_index", 0),
+        # the interests they list on Scholar themselves beat anything inferred
         "areas": gs["interests"] or oa.get("areas", []),
+        "areas_from": "scholar" if gs["interests"] else oa.get("areas_from", ""),
         "orcid": oa.get("orcid", ""),
     }
     return profile, titles
@@ -159,7 +221,15 @@ async def resolve(openalex_id: str) -> dict:
         raise ValueError("Not an OpenAlex author ID")
     async with _client() as c:
         r = await _oa_get(c, f"/authors/{openalex_id}", {})
-    return _profile(r.json())
+        kw = await _paper_keywords(c, [openalex_id])
+    return _with_keywords(_profile(r.json()), kw.get(openalex_id))
+
+
+async def refresh_areas(profiles: list[dict]) -> dict[str, list[str]]:
+    """New paper-keyword areas for already-followed researchers, by OpenAlex ID."""
+    async with _client() as c:
+        kw = await _paper_keywords(c, [p["openalex_id"] for p in profiles if p.get("openalex_id")])
+    return {aid: v["areas"] for aid, v in kw.items() if v["areas"]}
 
 
 async def learn_arxiv_categories(profile: dict, known_titles: list[str] | None = None) -> list[str]:

@@ -75,7 +75,9 @@ const topicName = (id) => state.topics.find((t) => t.id === id)?.name || "";
 const isPerson = (t) => t?.kind === "researcher";
 const nameKey = (n) => String(n || "").toLowerCase().replace(/[^a-z]/g, "");
 const initials = (n) => String(n || "").split(/[\s-]+/).filter(Boolean).map((w) => w[0]).filter((c) => /\p{Lu}/u.test(c)).slice(0, 2).join("") || "?";
-const avatar = (n) => `<span class="avatar" aria-hidden="true">${esc(initials(n))}</span>`;
+// initials, covered by their Google Scholar photo when we know their profile (the photo hides itself if missing)
+const avatar = (n, scholarId) => `<span class="avatar" aria-hidden="true">${esc(initials(n))}${scholarId
+  ? `<img src="/api/scholar/${encodeURIComponent(scholarId)}/photo" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>`;
 const compact = (n) => (n >= 1e4 ? `${Math.round(n / 1e3)}k` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n ?? 0));
 async function patchPaper(p, body) {
   const updated = await api(`/api/papers/${p.id}`, { method: "PATCH", body });
@@ -161,7 +163,7 @@ function renderTopics() {
   const pill = (id, name, n, t) => `
     <button class="topic-pill ${state.topicId === id ? "active" : ""} ${isPerson(t) ? "person" : ""}" data-topic="${id ?? ""}"
       ${isPerson(t) ? `title="Papers from ${esc(name)}'s lab${t.profile?.institution ? ` · ${esc(t.profile.institution)}` : ""}"` : ""}>
-      ${isPerson(t) ? avatar(name) : ""}${esc(name)}${n ? `<span class="dot" title="${n} new">${n}</span>` : ""}
+      ${isPerson(t) ? avatar(name, t.profile?.scholar_id) : ""}${esc(name)}${n ? `<span class="dot" title="${n} new">${n}</span>` : ""}
     </button>`;
   const shown = state.topics.filter((t) => t.enabled || t.paper_count);
   // keyword topics in the pill row; followed researchers in the left sidebar
@@ -172,7 +174,7 @@ function renderTopics() {
   $("#people").innerHTML = people.map((t) => `
     <button class="person-row ${state.topicId === t.id ? "active" : ""}" data-topic="${t.id}"
       title="Papers from ${esc(t.name)}'s lab${t.profile?.institution ? ` · ${esc(t.profile.institution)}` : ""}">
-      ${avatar(t.name)}
+      ${avatar(t.name, t.profile?.scholar_id)}
       <span class="person-main"><span class="person-name">${esc(t.name)}</span>${t.profile?.institution ? `<span class="person-inst">${esc(t.profile.institution)}</span>` : ""}</span>
       ${t.unread_count ? `<span class="dot" title="${t.unread_count} new">${t.unread_count}</span>` : ""}
     </button>`).join("") +
@@ -476,7 +478,7 @@ async function ask(q) {
 function openSettings() {
   $("#topicAdmin").innerHTML = state.topics.map((t) => `
     <li><button data-edit="${t.id}">
-      ${isPerson(t) ? avatar(t.name) : ""}
+      ${isPerson(t) ? avatar(t.name, t.profile?.scholar_id) : ""}
       <span class="t-main"><div class="t-name">${esc(t.name)} ${t.enabled ? "" : `<span class="off">paused</span>`}</div>
       <div class="t-sub">${esc(isPerson(t) ? `Researcher · ${t.profile?.institution || "lab feed"}` : t.queries.join(" · "))}</div></span>
       <span class="t-sub">${t.paper_count} papers ›</span>
@@ -550,7 +552,7 @@ function renderProfile() {
   const months = Math.round(t.lookback_days / 30);
   const q = encodeURIComponent(`${t.name} ${pr.institution || ""}`.trim());
   el.innerHTML = `
-    ${avatar(t.name)}
+    ${avatar(t.name, pr.scholar_id)}
     <div class="profile-main">
       <h2>${esc(t.name)}${t.enabled ? "" : ` <span class="off">paused</span>`}</h2>
       ${pr.institution ? `<div class="inst">${esc(pr.institution)}</div>` : ""}
@@ -566,7 +568,12 @@ function renderProfile() {
         <a href="https://arxiv.org/search/?searchtype=author&query=${encodeURIComponent(t.name)}" target="_blank" rel="noopener">arXiv ↗</a>
         ${pr.openalex_id ? `<a href="https://openalex.org/authors/${esc(pr.openalex_id)}" target="_blank" rel="noopener">OpenAlex ↗</a>` : ""}
         ${pr.orcid ? `<a href="https://orcid.org/${esc(pr.orcid)}" target="_blank" rel="noopener">ORCID ↗</a>` : ""}
+        ${pr.scholar_id ? "" : `<button class="text-btn" data-profile="link-scholar">Link Google Scholar profile</button>`}
       </div>
+      <form class="scholar-link" id="scholarLinkForm" hidden>
+        <input id="scholarLinkUrl" placeholder="Paste their Google Scholar profile link" autocomplete="off" aria-label="Google Scholar profile link">
+        <button class="primary-btn" type="submit">Link</button>
+      </form>
     </div>
     <div class="profile-actions">
       <button class="ghost-btn" data-profile="pause" title="${t.enabled ? "Skip this researcher in sweeps" : "Include in sweeps again"}">${t.enabled ? "Pause" : "Resume"}</button>
@@ -577,6 +584,7 @@ function renderProfile() {
 function openFollow() {
   $("#candidates").innerHTML = "";
   $("#followName").value = "";
+  $("#followOrg").value = "";
   $("#followModal").showModal();
   $("#followName").focus();
 }
@@ -586,17 +594,22 @@ async function searchResearchers() {
   if (name.length < 3) return toast("Type at least 3 characters");
   const list = $("#candidates");
   const isLink = name.includes("scholar.google.");
-  list.innerHTML = `<li class="loading">${isLink ? "Reading their Google Scholar profile…" : `Looking up “${esc(name)}”…`}</li>`;
+  const org = isLink ? "" : $("#followOrg").value.trim();
+  list.innerHTML = `<li class="loading">${isLink ? "Reading their Google Scholar profile…" : `Looking up “${esc(name)}”${org ? ` at “${esc(org)}”` : ""}…`}</li>`;
   let found;
-  try { found = await api(`/api/researchers/search?name=${encodeURIComponent(name)}`); }
+  try { found = await api(`/api/researchers/search?${new URLSearchParams({ name, org })}`); }
   catch (e) { list.innerHTML = `<li class="hint">Search failed: ${esc(e.message)}</li>`; return; }
-  list.innerHTML = found.map((c) => `
+  const anyOrgMatch = found.some((c) => c.org_match);
+  list.innerHTML = (org && found.length && !anyOrgMatch
+    ? `<li class="hint">Nobody named “${esc(name)}” found at “${esc(org)}”. Showing everyone with that name.</li>` : "") +
+    found.map((c) => `
     <li class="candidate">
-      ${avatar(c.name)}
+      ${avatar(c.name, c.scholar_id)}
       <div class="c-main">
         <div class="c-name">${esc(c.name)}</div>
-        <div class="c-sub">${esc(c.institution || "Institution unknown")} · h-index ${c.h_index} · ${c.works_count} works</div>
-        ${c.areas.length ? `<div class="c-areas">Works on <b>${c.areas.slice(0, 3).map(esc).join("</b>, <b>")}</b></div>` : ""}
+        <div class="c-sub">${c.org_match === "current" ? `<span class="ok">at ${esc(org)}</span> ` : c.org_match === "past" ? `<span class="warn">previously at ${esc(org)}</span> ` : ""}${esc(c.institution || "Institution unknown")} · h-index ${c.h_index} · ${c.works_count} works</div>
+        ${c.areas.length ? `<div class="c-areas">Works on <b>${c.areas.slice(0, 4).map(esc).join("</b>, <b>")}</b></div>` : ""}
+        ${c.latest?.title ? `<div class="c-areas">Latest: <i>${esc(c.latest.title)}</i>${c.latest.year ? ` (${c.latest.year})` : ""}</div>` : ""}
         ${c.scholar_id ? `<div class="c-areas">From their <b>Google Scholar</b> profile${c.openalex_matched ? ` · also found in OpenAlex (${c.openalex_matched} papers matched)` : ""}. New papers are also searched on arXiv, OpenAlex and Semantic Scholar.</div>` : ""}
       </div>
       ${c.followed_topic_id
@@ -623,6 +636,25 @@ async function follow(openalexId, btn, scholarId) {
     toast(e.message);
     btn.disabled = false;
     btn.textContent = "Follow";
+  }
+}
+
+async function linkScholar(e) {
+  e.preventDefault();
+  const t = state.topics.find((x) => x.id === state.topicId);
+  const url = $("#scholarLinkUrl").value.trim();
+  if (!t || !url) return;
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  btn.textContent = "Linking…";
+  try {
+    await api(`/api/researchers/${t.id}/scholar`, { method: "POST", body: { url } });
+    toast(`Linked ${t.name}'s Google Scholar profile. From the next sweep, Scholar decides which papers are theirs.`, 5000);
+    await loadTopics();
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+    btn.textContent = "Link";
   }
 }
 
@@ -758,7 +790,9 @@ function bind() {
     const a = e.target.closest("[data-profile]")?.dataset.profile;
     if (a === "pause") toggleResearcher();
     if (a === "unfollow") unfollow();
+    if (a === "link-scholar") { $("#scholarLinkForm").hidden = false; $("#scholarLinkUrl").focus(); }
   };
+  $("#profile").onsubmit = linkScholar;
   $("#topicForm").onsubmit = saveTopic;
   $("#tmDelete").onclick = deleteTopic;
   $$("[data-close]").forEach((b) => (b.onclick = () => b.closest("dialog").close()));

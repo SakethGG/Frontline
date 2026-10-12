@@ -16,11 +16,13 @@ from .summarizer import API_ERRORS, explain, summarizer
 from .sweep import auto_sweep_loop, manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("frontline.app")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
+    asyncio.create_task(_refresh_researcher_areas())
     asyncio.create_task(summarizer.probe())
     task = asyncio.create_task(auto_sweep_loop())
     yield
@@ -122,15 +124,35 @@ def delete_topic(topic_id: int):
 # A followed researcher is a topic with kind="researcher"; it shows up in /api/topics,
 # is swept like any topic, and is unfollowed with DELETE /api/topics/{id}.
 
+async def _refresh_researcher_areas() -> None:
+    """One-time upgrade: followed researchers whose labels came from OpenAlex's coarse topic
+    list get labels from their own papers' keywords (shown on their profile; their subtopic
+    chips are left alone so existing paper tags keep working)."""
+    stale = [t for t in db.list_topics() if t["kind"] == "researcher"
+             and (t.get("profile") or {}).get("areas_from") in (None, "topics")
+             and not (t.get("profile") or {}).get("scholar_id")]  # Scholar-linked: their own listed interests
+    if not stale:
+        return
+    try:
+        fresh = await researchers.refresh_areas([t["profile"] for t in stale])
+    except httpx.HTTPError as e:
+        log.info("Could not refresh researcher labels: %s", e)
+        return
+    for t in stale:
+        areas = fresh.get(t["profile"].get("openalex_id"))
+        if areas:
+            db.update_topic(t["id"], {"profile": {**t["profile"], "areas": areas, "areas_from": "keywords"}})
+
+
 @app.get("/api/researchers/search")
-async def search_researchers(name: str):
+async def search_researchers(name: str, org: str = ""):
     if len(name.strip()) < 3:
         raise HTTPException(422, "Type at least 3 characters")
     try:
         if "scholar.google." in name:  # a pasted Google Scholar profile link
             candidates = await researchers.search_scholar(name.strip())
         else:
-            candidates = await researchers.search(name.strip())
+            candidates = await researchers.search(name.strip(), org.strip())
     except ValueError as e:
         raise HTTPException(422, str(e))
     except httpx.HTTPError as e:
@@ -192,6 +214,69 @@ def update_researcher(topic_id: int, body: ResearcherPatch):
     if not t or t["kind"] != "researcher":
         raise HTTPException(404)
     return db.update_topic(topic_id, body.model_dump(exclude_none=True))
+
+
+class ScholarLinkIn(BaseModel):
+    url: str
+
+
+@app.post("/api/researchers/{topic_id}/scholar")
+async def link_scholar(topic_id: int, body: ScholarLinkIn):
+    """Attach a Google Scholar profile to someone already followed: their photo shows up, and
+    from the next sweep their Scholar page has the final say on which papers are theirs."""
+    t = db.get_topic(topic_id)
+    if not t or t["kind"] != "researcher":
+        raise HTTPException(404)
+    sid = researchers.scholar_id(body.url)
+    if not sid:
+        raise HTTPException(422, "That isn't a Google Scholar profile link. It should look like "
+                                 "https://scholar.google.com/citations?user=XXXXXXXXXXXX")
+    other = _followed_topic_id(sid, "")
+    if other is not None and other != topic_id:
+        raise HTTPException(409, f"That Scholar profile is already linked to {db.get_topic(other)['name']}")
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as c:
+            gs = await sources.scholar_page(c, sid)
+    except sources.ScholarUnavailable as e:
+        raise HTTPException(502, str(e))
+    profile = {**(t.get("profile") or {}), "scholar_id": sid, "photo_url": gs["photo"],
+               "cited_by_count": gs["citations"] or (t.get("profile") or {}).get("cited_by_count", 0),
+               "h_index": gs["h_index"] or (t.get("profile") or {}).get("h_index", 0)}
+    if gs["affiliation"]:
+        profile["institution"] = gs["affiliation"]
+    if gs["interests"]:
+        profile.update(areas=gs["interests"], areas_from="scholar")
+    return db.update_topic(topic_id, {"author_ids": {**(t.get("author_ids") or {}), "scholar": sid},
+                                      "profile": profile})
+
+
+PHOTO_DIR = config.DB_PATH.parent / "photos"
+
+
+@app.get("/api/scholar/{sid}/photo")
+async def scholar_photo(sid: str):
+    """A Scholar profile photo, downloaded once and kept in data/photos (404 if they have none)."""
+    if not re.fullmatch(r"[\w-]{12}", sid):
+        raise HTTPException(404)
+    path = PHOTO_DIR / f"{sid}.jpg"
+    missing = PHOTO_DIR / f"{sid}.none"  # remembers "no photo" so Scholar isn't asked every time
+    if not path.exists():
+        if missing.exists():
+            raise HTTPException(404)
+        url = next((((t.get("profile") or {}).get("photo_url")) for t in db.list_topics()
+                    if (t.get("author_ids") or {}).get("scholar") == sid), None)
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as c:
+                url = url or (await sources.scholar_page(c, sid))["photo"]
+                r = await c.get(url, headers={"User-Agent": sources.BROWSER_UA}) if url else None
+        except (httpx.HTTPError, sources.ScholarUnavailable):
+            raise HTTPException(404)  # try again next time
+        PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+        if r is None or r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/"):
+            missing.touch()
+            raise HTTPException(404)
+        path.write_bytes(r.content)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
 
 
 # ---------------------------------------------------------------- sweeps
