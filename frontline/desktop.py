@@ -1,15 +1,19 @@
 """Frontline as a desktop app: the API runs in-process and the UI opens in a native window.
 
     pythonw -m frontline.desktop            # launch (what the desktop shortcut runs)
-    python  -m frontline.desktop --install  # create Desktop + Start-menu shortcuts
+    python  -m frontline.desktop --install  # Windows: Desktop + Start-menu shortcuts
+                                            # macOS: ~/Applications/Frontline.app
 """
 
 import ctypes
 import os
+import plistlib
+import shutil
 import socket
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 from pathlib import Path
 
@@ -19,6 +23,9 @@ ICON_ICO = ROOT / "static" / "frontline.ico"
 ICON_PNG = ROOT / "static" / "frontline.png"
 APP_ID = "Frontline.ResearchRadar"  # keep in sync with config.APP_ID
 TITLE = "Frontline"
+IS_MAC = sys.platform == "darwin"
+BUNDLE_ID = "com.frontline.researchradar"
+MAC_APP = Path.home() / "Applications" / f"{TITLE}.app"
 
 
 def _redirect_output() -> None:
@@ -30,17 +37,27 @@ def _redirect_output() -> None:
 
 
 def _message_box(text: str) -> None:
+    if IS_MAC:
+        # text goes in via argv so quotes in it can't break the AppleScript
+        script = f'on run argv\ndisplay dialog (item 1 of argv) with title "{TITLE}" buttons {{"OK"}} default button 1 with icon note\nend run'
+        subprocess.run(["osascript", "-e", script, text], capture_output=True)
+        return
     ctypes.windll.user32.MessageBoxW(None, text, TITLE, 0x40)  # MB_ICONINFORMATION
 
 
 def _single_instance():
     """Hold an exclusive lock for the app's lifetime; None if another window already has it."""
-    import msvcrt
-
     DATA.mkdir(parents=True, exist_ok=True)
     fh = open(DATA / ".desktop.lock", "a+")
     try:
-        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        if IS_MAC:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        else:
+            import msvcrt
+
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
     except OSError:
         fh.close()
         return None
@@ -55,6 +72,21 @@ def _windows_identity() -> None:
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{APP_ID}") as k:
         winreg.SetValueEx(k, "DisplayName", 0, winreg.REG_SZ, TITLE)
         winreg.SetValueEx(k, "IconUri", 0, winreg.REG_SZ, str(ICON_PNG))
+
+
+def _mac_identity() -> None:
+    """The process is really Python.app, so rename it and swap in our Dock icon before Cocoa starts."""
+    try:
+        from AppKit import NSApplication, NSImage
+        from Foundation import NSBundle
+
+        info = NSBundle.mainBundle().infoDictionary()
+        info["CFBundleName"] = info["CFBundleDisplayName"] = TITLE
+        icon = NSImage.alloc().initWithContentsOfFile_(str(ICON_PNG))
+        if icon:
+            NSApplication.sharedApplication().setApplicationIconImage_(icon)
+    except Exception as e:
+        print(f"could not set macOS app identity: {e}")
 
 
 def _set_window_icon(window) -> None:
@@ -89,9 +121,12 @@ def run() -> None:
     _redirect_output()
     lock = _single_instance()
     if lock is None:
-        _message_box("Frontline is already open — check your taskbar.")
+        _message_box(f"Frontline is already open — check your {'Dock' if IS_MAC else 'taskbar'}.")
         return
-    _windows_identity()
+    if IS_MAC:
+        _mac_identity()
+    else:
+        _windows_identity()
 
     port = _pick_port()
     # must be set before frontline.config is imported
@@ -120,9 +155,13 @@ def run() -> None:
         TITLE, f"http://127.0.0.1:{port}/", width=1380, height=900, min_size=(420, 560),
         background_color="#e9e9e5", text_select=True,
     )
-    window.events.shown += lambda: _set_window_icon(window)
+    if not IS_MAC:
+        window.events.shown += lambda: _set_window_icon(window)
     # persistent storage keeps UI prefs (theme, sort) between launches
-    webview.start(gui="edgechromium", private_mode=False, storage_path=str(DATA / "webview"))
+    webview.start(
+        gui=None if IS_MAC else "edgechromium",  # None = Cocoa/WebKit on macOS
+        private_mode=False, storage_path=str(DATA / "webview"),
+    )
 
     server.should_exit = True
     thread.join(timeout=5)
@@ -150,7 +189,62 @@ foreach ($dir in $targets) {
 """
 
 
+def _mac_icns(dest: Path) -> None:
+    """Build an .icns from the PNG with the macOS built-ins sips + iconutil."""
+    with tempfile.TemporaryDirectory() as tmp:
+        iconset = Path(tmp) / "Frontline.iconset"
+        iconset.mkdir()
+        for size in (16, 32, 128, 256, 512):
+            for scale in (1, 2):
+                px = size * scale
+                name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
+                subprocess.run(
+                    ["sips", "-z", str(px), str(px), str(ICON_PNG), "--out", str(iconset / name)],
+                    capture_output=True, check=True,
+                )
+        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(dest)], capture_output=True, check=True)
+
+
+def install_mac_app() -> None:
+    """Create ~/Applications/Frontline.app, a thin bundle that launches this checkout's venv."""
+    python = Path(sys.executable)  # the venv's python, not the resolved Homebrew binary
+    if MAC_APP.exists():
+        shutil.rmtree(MAC_APP)
+    contents = MAC_APP / "Contents"
+    (contents / "MacOS").mkdir(parents=True)
+    (contents / "Resources").mkdir()
+
+    _mac_icns(contents / "Resources" / "Frontline.icns")
+    with open(contents / "Info.plist", "wb") as f:
+        plistlib.dump({
+            "CFBundleName": TITLE,
+            "CFBundleDisplayName": TITLE,
+            "CFBundleIdentifier": BUNDLE_ID,
+            "CFBundleExecutable": TITLE,
+            "CFBundleIconFile": "Frontline",
+            "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": "1.0",
+            "NSHighResolutionCapable": True,
+        }, f)
+
+    launcher = contents / "MacOS" / TITLE
+    launcher.write_text(
+        "#!/bin/bash\n"
+        "# Generated by `python -m frontline.desktop --install`; rerun that if you move the project.\n"
+        f'cd "{ROOT}" || exit 1\n'
+        'mkdir -p data\n'
+        f'exec "{python}" -m frontline.desktop >> data/frontline.log 2>&1\n'
+    )
+    launcher.chmod(0o755)
+    # tell Finder/Launchpad about the new bundle and its icon
+    subprocess.run(["touch", str(MAC_APP)])
+    print(f"Created {MAC_APP}")
+
+
 def install_shortcuts() -> None:
+    if IS_MAC:
+        install_mac_app()
+        return
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if not pythonw.exists():
         sys.exit(f"pythonw.exe not found next to {sys.executable}")

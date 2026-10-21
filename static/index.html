@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=9">
+  <link rel="stylesheet" href="/static/style.css?v=10">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -28,9 +28,17 @@
       </svg>
       <span>Frontline</span>
     </div>
+    <nav class="sections" id="sectionNav" aria-label="Sections">
+      <a class="section-link" href="#home" data-section="home">Home</a>
+      <a class="section-link" href="#radar" data-section="radar">Radar <span class="badge" id="navRadar"></span></a>
+      <a class="section-link" href="#library" data-section="library">Library</a>
+      <a class="section-link" href="#conferences" data-section="conferences">Conferences <span class="badge" id="navConf"></span></a>
+      <a class="section-link" href="#ideas" data-section="ideas">Ideas</a>
+      <a class="section-link" href="#projects" data-section="projects">Projects <span class="badge" id="navTasks"></span></a>
+    </nav>
     <div class="search-wrap">
       <span class="search-icon" aria-hidden="true">⌕</span>
-      <input type="search" id="search" placeholder="Search papers…" aria-label="Search papers">
+      <input type="search" id="search" placeholder="Search papers…" aria-label="Search">
       <kbd class="search-kbd">/</kbd>
     </div>
     <div class="top-actions">
@@ -52,12 +60,140 @@
 
   <div class="layout">
   <!-- Followed researchers: left sidebar, one per row -->
-  <aside class="people" aria-label="Followed researchers">
+  <aside class="people" aria-label="Followed researchers" data-for="radar">
     <h2 class="people-title">Researchers</h2>
     <nav class="people-list" id="people"></nav>
   </aside>
+  <aside class="people" aria-label="Collections" data-for="library" hidden>
+    <h2 class="people-title">Collections</h2>
+    <nav class="people-list" id="libCollections"></nav>
+  </aside>
+  <aside class="people" aria-label="Projects" data-for="projects" hidden>
+    <h2 class="people-title">Projects</h2>
+    <nav class="people-list" id="projList"></nav>
+  </aside>
 
-  <main class="page">
+  <!-- Home: today at a glance -->
+  <main class="page" data-section="home" hidden>
+    <div class="section-head">
+      <div><h1 id="homeHello">Today</h1><p class="sub" id="homeDate"></p></div>
+    </div>
+    <div class="home-grid" id="homeGrid"></div>
+  </main>
+
+  <!-- Library: PDFs in the user's folder -->
+  <main class="page" data-section="library" hidden>
+    <div class="section-head">
+      <div><h1>Library</h1><p class="sub" id="libPath"></p></div>
+      <div class="head-actions" id="libActions">
+        <button class="ghost-btn" id="libRescan" title="Look for new or moved PDFs in the folder">⟳ Rescan</button>
+        <label class="primary-btn file-btn">+ Add PDFs<input type="file" id="libFiles" accept="application/pdf,.pdf" multiple hidden></label>
+      </div>
+    </div>
+    <section class="panel setup" id="libSetup" hidden></section>
+    <div id="libMain">
+      <div class="interest-row" id="libInterests"></div>
+      <div class="viewbar">
+        <div class="tabs" role="tablist" id="libTabs">
+          <button class="tab" data-lview="all">All <span class="badge" data-count="all"></span></button>
+          <button class="tab" data-lview="unread">To read <span class="badge" data-count="unread"></span></button>
+          <button class="tab" data-lview="reading">Reading <span class="badge" data-count="reading"></span></button>
+          <button class="tab" data-lview="read">Read <span class="badge" data-count="read"></span></button>
+          <button class="tab" data-lview="starred">Starred <span class="badge" data-count="starred"></span></button>
+        </div>
+        <div class="view-controls">
+          <select id="libSort" aria-label="Sort">
+            <option value="relevance">Most relevant to me</option>
+            <option value="added">Recently added</option>
+            <option value="year">Newest first</option>
+            <option value="title">Title A–Z</option>
+          </select>
+        </div>
+      </div>
+      <div class="feed-status" id="libStatus"></div>
+      <div class="lib-list" id="libList"></div>
+      <div class="empty" id="libEmpty" hidden></div>
+    </div>
+    <div class="dropzone" id="libDrop" hidden><div>Drop PDFs to add them to your library</div></div>
+  </main>
+
+  <!-- Conferences & workshops -->
+  <main class="page" data-section="conferences" hidden>
+    <div class="section-head">
+      <div><h1>Conferences &amp; workshops</h1><p class="sub">Deadlines for the venues you're aiming at, in your local time.</p></div>
+      <div class="head-actions">
+        <a class="ghost-btn" href="/api/calendar.ics" title="Deadlines and dated tasks as a calendar file (Google Calendar, Outlook, Apple Calendar)">📅 Export calendar</a>
+        <button class="ghost-btn" id="confAdd">+ Add manually</button>
+        <button class="primary-btn" id="confBrowse">Browse catalog</button>
+      </div>
+    </div>
+    <div class="interest-row" id="confFocus"></div>
+    <div class="conf-layout">
+      <section class="panel">
+        <div class="panel-head"><h2>Upcoming deadlines</h2>
+          <label class="switch small"><input type="checkbox" id="confPast"><span class="track"></span> Show past</label></div>
+        <ol class="timeline" id="confTimeline"></ol>
+      </section>
+      <section>
+        <h2 class="group-title">Tracking</h2>
+        <div class="conf-grid" id="confTracked"></div>
+        <h2 class="group-title" id="confSuggestTitle">Suggested for your focus</h2>
+        <div class="conf-grid" id="confSuggest"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Ideation center -->
+  <main class="page" data-section="ideas" hidden>
+    <div class="section-head">
+      <div><h1>Ideas</h1><p class="sub">Sparks, research proposals and roadmaps. Capture fast, develop later.</p></div>
+      <div class="head-actions">
+        <div class="seg" id="ideaLayout">
+          <button data-layout="grid" class="on">Grid</button><button data-layout="board">Board</button>
+        </div>
+      </div>
+    </div>
+    <form class="capture" id="ideaCapture">
+      <input id="ideaInput" placeholder="Capture an idea… (Enter to save)" autocomplete="off" aria-label="New idea">
+      <select id="ideaKind" aria-label="Kind">
+        <option value="idea">💡 Idea</option><option value="proposal">📝 Proposal</option><option value="roadmap">🗺 Roadmap</option>
+      </select>
+      <button class="primary-btn" type="submit">Add</button>
+    </form>
+    <div class="viewbar">
+      <div class="tabs" id="ideaTabs">
+        <button class="tab active" data-ikind="">All</button>
+        <button class="tab" data-ikind="idea">Ideas</button>
+        <button class="tab" data-ikind="proposal">Proposals</button>
+        <button class="tab" data-ikind="roadmap">Roadmaps</button>
+      </div>
+      <div class="view-controls"><select id="ideaStatus" aria-label="Status filter"></select></div>
+    </div>
+    <div class="subtopics" id="ideaTags"></div>
+    <div id="ideaBoard"></div>
+    <div class="empty" id="ideaEmpty" hidden></div>
+  </main>
+
+  <!-- Projects: to-do board + future tasks -->
+  <main class="page" data-section="projects" hidden>
+    <div class="section-head" id="projHead"></div>
+    <div class="viewbar">
+      <div class="tabs" id="projTabs">
+        <button class="tab active" data-pview="todo">To-do <span class="badge" id="projCountTodo"></span></button>
+        <button class="tab" data-pview="future">Future <span class="badge" id="projCountFuture"></span></button>
+      </div>
+      <form class="task-add" id="taskAdd">
+        <input id="taskTitle" placeholder="Add a task… (Enter)" autocomplete="off" aria-label="New task">
+        <input type="date" id="taskDue" aria-label="Due date" title="Due date">
+        <select id="taskPrio" aria-label="Priority"><option value="1">Normal</option><option value="2">High</option><option value="0">Low</option></select>
+        <select id="taskProj" aria-label="Project"></select>
+        <button class="primary-btn" type="submit">Add</button>
+      </form>
+    </div>
+    <div id="projBody"></div>
+  </main>
+
+  <main class="page" data-section="radar">
     <!-- 2. Briefing: one compact line, expandable -->
     <section class="briefing" id="briefing" hidden>
       <button class="briefing-line" id="briefingToggle" aria-expanded="false">
@@ -150,6 +286,134 @@
     </form>
   </aside>
 
+  <!-- Drawer: library paper details and the idea editor -->
+  <div class="scrim" id="drawerScrim" hidden></div>
+  <aside class="reader drawer" id="drawer" aria-hidden="true">
+    <div class="reader-top" id="drawerTop"></div>
+    <div class="reader-scroll" id="drawerBody"></div>
+    <form class="ask-form" id="drawerAsk" hidden>
+      <input id="drawerAskInput" placeholder="Ask about this paper…" autocomplete="off">
+      <button class="primary-btn" type="submit">Ask</button>
+    </form>
+  </aside>
+
+  <!-- Library interests -->
+  <dialog class="modal" id="interestsModal">
+    <form method="dialog" id="interestsForm">
+      <div class="modal-head"><h2>Your interests</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
+      <div class="modal-body form">
+        <p class="hint">Library papers are tagged with these and sorted by how well they match. One per line: methods, problems, platforms, anything you care about.</p>
+        <label>Interests <small>one per line</small><textarea name="interests" rows="9" placeholder="Reinforcement Learning&#10;Sim-to-Real&#10;Whole-body control"></textarea></label>
+        <label class="check"><input type="checkbox" name="retag" checked> Re-tag the library now <small id="retagHint"></small></label>
+        <button type="button" class="text-btn" id="interestsReset">Use my Radar topics instead</button>
+      </div>
+      <div class="modal-foot"><span class="spacer"></span><button type="button" class="ghost-btn" data-close>Cancel</button><button class="primary-btn" type="submit">Save</button></div>
+    </form>
+  </dialog>
+
+  <!-- Conference catalog -->
+  <dialog class="modal wide" id="catalogModal">
+    <div class="modal-head"><h2>Conference catalog</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+    <div class="modal-body">
+      <p class="hint" id="catalogHint">Community-maintained deadlines for AI, ML, vision, NLP and robotics venues.</p>
+      <div class="follow-search"><input id="catalogQ" placeholder="Search, e.g. ICRA, robot learning, NeurIPS" autocomplete="off" aria-label="Search the catalog"></div>
+      <div class="subtopics" id="catalogTags"></div>
+      <ul class="candidates" id="catalogList"></ul>
+    </div>
+  </dialog>
+
+  <!-- Conference focus areas -->
+  <dialog class="modal" id="focusModal">
+    <div class="modal-head"><h2>What do you want to focus on?</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+    <div class="modal-body">
+      <p class="hint">Pick the areas you submit to. Suggestions and the catalog are filtered to these.</p>
+      <div class="chip-pick" id="focusPick"></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="primary-btn" id="focusSave">Done</button></div>
+  </dialog>
+
+  <!-- Conference / workshop editor -->
+  <dialog class="modal wide" id="confModal">
+    <form method="dialog" id="confForm">
+      <div class="modal-head"><h2 id="cmTitle">Add a venue</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
+      <div class="modal-body form">
+        <div class="row">
+          <label class="narrow">Type<select name="kind"><option value="conference">Conference</option><option value="workshop">Workshop</option><option value="journal">Journal / special issue</option><option value="other">Other</option></select></label>
+          <label>Short name<input name="name" required placeholder="e.g. CoRL, or LocoLearn Workshop"></label>
+          <label class="narrow">Year<input name="year" type="number" min="2000" max="2100"></label>
+        </div>
+        <label>Full name<input name="full_name" placeholder="Conference on Robot Learning"></label>
+        <label data-only="workshop">Held at <small>the main conference, for a workshop</small><input name="parent" placeholder="e.g. CoRL 2026"></label>
+        <div class="row">
+          <label>Website<input name="url" type="url" placeholder="https://"></label>
+          <label>Location<input name="location" placeholder="City, Country"></label>
+        </div>
+        <div class="row">
+          <label>Starts<input name="start_date" type="date"></label>
+          <label>Ends<input name="end_date" type="date"></label>
+        </div>
+        <fieldset class="deadlines">
+          <legend>Deadlines</legend>
+          <div id="cmDeadlines"></div>
+          <button type="button" class="ghost-btn" id="cmAddDeadline">+ Deadline</button>
+        </fieldset>
+        <label>Tags <small>comma separated</small><input name="tags" placeholder="robotics, machine-learning"></label>
+        <label>Notes<textarea name="notes" rows="3" placeholder="Page limit, submission site, who's co-authoring…"></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="danger-btn" id="cmDelete" hidden>Stop tracking</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost-btn" data-close>Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Project editor -->
+  <dialog class="modal" id="projectModal">
+    <form method="dialog" id="projectForm">
+      <div class="modal-head"><h2 id="pmTitle">New project</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
+      <div class="modal-body form">
+        <label>Name<input name="name" required placeholder="e.g. Co-design paper for CoRL"></label>
+        <label>Description<textarea name="description" rows="3" placeholder="Goal, scope, collaborators…"></textarea></label>
+        <div class="row">
+          <label>Target venue <small>shows its deadline countdown</small><select name="conference_id"></select></label>
+          <label class="narrow">Status<select name="status"><option value="active">Active</option><option value="paused">Paused</option><option value="done">Done</option></select></label>
+        </div>
+        <label>Colour<div class="swatches" id="pmColors"></div></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="danger-btn" id="pmDelete" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost-btn" data-close>Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Task editor -->
+  <dialog class="modal" id="taskModal">
+    <form method="dialog" id="taskForm">
+      <div class="modal-head"><h2>Task</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
+      <div class="modal-body form">
+        <label>Task<input name="title" required></label>
+        <label>Notes<textarea name="notes" rows="4" placeholder="Details, links, acceptance criteria…"></textarea></label>
+        <div class="row">
+          <label>Status<select name="status"><option value="todo">To do</option><option value="doing">In progress</option><option value="done">Done</option><option value="future">Future (later)</option></select></label>
+          <label>Priority<select name="priority"><option value="2">High</option><option value="1">Normal</option><option value="0">Low</option></select></label>
+          <label>Due<input name="due" type="date"></label>
+        </div>
+        <label>Project<select name="project_id"></select></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="danger-btn" id="tkDelete">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost-btn" data-close>Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Settings: topic list -->
   <dialog class="modal" id="settingsModal">
     <div class="modal-head">
@@ -222,6 +486,12 @@
     <div class="modal-head"><h2>Keyboard shortcuts</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
     <div class="modal-body">
       <dl class="keys">
+        <dt><kbd>h</kbd> <kbd>r</kbd> <kbd>l</kbd> <kbd>c</kbd> <kbd>i</kbd> <kbd>p</kbd></dt><dd>Home / Radar / Library / Conferences / Ideas / Projects</dd>
+        <dt><kbd>n</kbd></dt><dd>New idea or task (on Ideas / Projects)</dd>
+        <dt><kbd>/</kbd></dt><dd>Search the current section</dd>
+      </dl>
+      <h3 class="keys-title">Radar</h3>
+      <dl class="keys">
         <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Next / previous paper</dd>
         <dt><kbd>Enter</kbd></dt><dd>Open the selected paper</dd>
         <dt><kbd>Esc</kbd></dt><dd>Close the reader</dd>
@@ -229,13 +499,17 @@
         <dt><kbd>u</kbd></dt><dd>Toggle read / unread</dd>
         <dt><kbd>d</kbd></dt><dd>Deep dive</dd>
         <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>New / All / Starred</dd>
-        <dt><kbd>/</kbd></dt><dd>Search</dd>
         <dt><kbd>Shift</kbd> + <kbd>S</kbd></dt><dd>Sweep now</dd>
       </dl>
     </div>
   </dialog>
 
   <div class="toast" id="toast" hidden></div>
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=7"></script>
+  <script src="/static/home.js?v=1"></script>
+  <script src="/static/library.js?v=1"></script>
+  <script src="/static/conferences.js?v=1"></script>
+  <script src="/static/ideas.js?v=1"></script>
+  <script src="/static/projects.js?v=1"></script>
 </body>
 </html>

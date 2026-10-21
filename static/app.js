@@ -1,5 +1,8 @@
 // Frontline UI — vanilla JS, talks to the FastAPI backend.
-// Navigation model: Topic (pills) → View (New / All / Starred) → optional Subtopic → cards → Reader panel.
+// Sections (Home · Radar · Library · Conferences · Ideas · Projects) are switched from the top nav;
+// this file holds the shared helpers and the Radar, the others live in their own files and register
+// themselves in `Sections`.
+// Radar navigation model: Topic (pills) → View (New / All / Starred) → optional Subtopic → cards → Reader panel.
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -7,7 +10,10 @@ const md = (s) => (window.marked && window.DOMPurify ? DOMPurify.sanitize(marked
 
 const PAGE = 60;
 const RELEVANT_MIN = 5;
+const SECTIONS = ["home", "radar", "library", "conferences", "ideas", "projects"];
+const Sections = {};  // name -> { show(), search(q), onKey(e), placeholder }
 const state = {
+  section: "radar",
   topics: [], sweeps: [], status: null,
   topicId: null, view: "new", subtopic: null, q: "", sweepId: null,
   sort: "relevance", relevantOnly: true,
@@ -18,6 +24,7 @@ const state = {
   polling: null, wasRunning: false,
 };
 const dives = new Map();  // paper id -> markdown
+const savedToLibrary = new Set();  // radar paper ids already in the library
 const chats = new Map();  // paper id -> [{q, a}]
 
 // ---------------------------------------------------------------- prefs
@@ -27,13 +34,25 @@ try {
   if (saved.sort) state.sort = saved.sort;
   if (typeof saved.relevantOnly === "boolean") state.relevantOnly = saved.relevantOnly;
   if (saved.theme) document.documentElement.dataset.theme = saved.theme;
+  if (SECTIONS.includes(saved.section)) state.section = saved.section;
 } catch {}
 function savePrefs() {
   try {
     localStorage.setItem("frontline:prefs", JSON.stringify({
       sort: state.sort, relevantOnly: state.relevantOnly, theme: document.documentElement.dataset.theme || "",
+      section: state.section,
     }));
   } catch {}
+}
+// small per-section preferences (layout, sort, …) live under their own key
+function pref(key, value) {
+  try {
+    const all = JSON.parse(localStorage.getItem("frontline:ui") || "{}");
+    if (value === undefined) return all[key];
+    all[key] = value;
+    localStorage.setItem("frontline:ui", JSON.stringify(all));
+  } catch {}
+  return value;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -79,6 +98,85 @@ const initials = (n) => String(n || "").split(/[\s-]+/).filter(Boolean).map((w) 
 const avatar = (n, scholarId) => `<span class="avatar" aria-hidden="true">${esc(initials(n))}${scholarId
   ? `<img src="/api/scholar/${encodeURIComponent(scholarId)}/photo" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>`;
 const compact = (n) => (n >= 1e4 ? `${Math.round(n / 1e3)}k` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n ?? 0));
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const lines = (v) => String(v || "").split("\n").map((s) => s.trim()).filter(Boolean);
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+// Time left until a UTC ISO instant: { text: "12d 4h", cls: "urgent" | "soon" | "later" | "past" }
+function countdown(iso) {
+  const ms = new Date(iso) - Date.now();
+  if (ms <= 0) return { text: "passed", cls: "past" };
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  const text = d >= 2 ? `${d}d ${h % 24}h` : h >= 1 ? `${h}h ${m % 60}m` : `${m}m`;
+  return { text, cls: d < 7 ? "urgent" : d < 30 ? "soon" : "later" };
+}
+const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+// A task due date (YYYY-MM-DD) relative to today: { text, cls }
+function dueInfo(due) {
+  if (!due) return null;
+  const days = Math.round((new Date(due + "T00:00:00") - new Date(todayISO() + "T00:00:00")) / 864e5);
+  if (days < 0) return { text: `${-days}d overdue`, cls: "overdue" };
+  if (days === 0) return { text: "Today", cls: "today" };
+  if (days === 1) return { text: "Tomorrow", cls: "soon" };
+  if (days < 7) return { text: new Date(due + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" }), cls: "soon" };
+  return { text: fmtDate(due), cls: "" };
+}
+
+// ---------------------------------------------------------------- drawer (library papers, idea editor)
+
+function openDrawer(top, body, { ask = false } = {}) {
+  $("#drawerTop").innerHTML = top;
+  $("#drawerBody").innerHTML = body;
+  $("#drawerAsk").hidden = !ask;
+  $("#drawerBody").scrollTop = 0;
+  $("#drawer").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden", "false");
+  $("#drawerScrim").hidden = false;
+  document.body.classList.add("reader-open");
+}
+function closeDrawer() {
+  if (!$("#drawer").classList.contains("open")) return;
+  $("#drawer").classList.remove("open");
+  $("#drawer").setAttribute("aria-hidden", "true");
+  $("#drawerScrim").hidden = true;
+  document.body.classList.remove("reader-open");
+  $("#drawer").dispatchEvent(new Event("drawerclose"));
+}
+const drawerOpen = () => $("#drawer").classList.contains("open");
+
+// ---------------------------------------------------------------- sections
+
+function showSection(name, { push = true } = {}) {
+  if (!SECTIONS.includes(name)) name = "radar";
+  closeReader();
+  closeDrawer();
+  state.section = name;
+  savePrefs();
+  document.body.dataset.section = name;
+  $$("main.page").forEach((m) => (m.hidden = m.dataset.section !== name));
+  $$(".layout > aside[data-for]").forEach((a) => (a.hidden = a.dataset.for !== name));
+  $$("#sectionNav .section-link").forEach((a) => a.classList.toggle("active", a.dataset.section === name));
+  const s = Sections[name];
+  $("#search").placeholder = s?.placeholder || "Search papers…";
+  $("#search").value = name === "radar" ? state.q : (s?.q || "");
+  if (push && location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
+  s?.show?.();
+}
+
+// nav badges: new radar papers, deadlines within a week, tasks due/overdue
+async function refreshNavBadges() {
+  try {
+    const [confs, tasks] = await Promise.all([api("/api/conferences"), api("/api/tasks")]);
+    const now = new Date().toISOString(), week = new Date(Date.now() + 7 * 864e5).toISOString();
+    const soon = confs.flatMap((c) => c.deadlines).filter((d) => d.at >= now && d.at <= week).length;
+    const due = tasks.filter((t) => t.status !== "done" && t.status !== "future" && t.due && t.due <= todayISO()).length;
+    $("#navConf").textContent = soon || "";
+    $("#navConf").title = soon ? `${plural(soon, "deadline")} this week` : "";
+    $("#navTasks").textContent = due || "";
+    $("#navTasks").title = due ? `${plural(due, "task")} due today or overdue` : "";
+  } catch {}
+}
 async function patchPaper(p, body) {
   const updated = await api(`/api/papers/${p.id}`, { method: "PATCH", body });
   const i = state.items.findIndex((x) => x.id === p.id);
@@ -160,6 +258,7 @@ async function loadTopics() {
 
 function renderTopics() {
   const totalNew = state.topics.reduce((a, t) => a + t.unread_count, 0);
+  $("#navRadar").textContent = totalNew || "";
   const pill = (id, name, n, t) => `
     <button class="topic-pill ${state.topicId === id ? "active" : ""} ${isPerson(t) ? "person" : ""}" data-topic="${id ?? ""}"
       ${isPerson(t) ? `title="Papers from ${esc(name)}'s lab${t.profile?.institution ? ` · ${esc(t.profile.institution)}` : ""}"` : ""}>
@@ -376,7 +475,9 @@ function openReader(i) {
     <a class="primary-btn" href="${esc(p.url)}" target="_blank" rel="noopener">Open paper ↗</a>
     ${p.pdf_url ? `<a class="ghost-btn" href="${esc(p.pdf_url)}" target="_blank" rel="noopener">PDF</a>` : ""}
     ${p.code_url ? `<a class="ghost-btn" href="${esc(p.code_url)}" target="_blank" rel="noopener">Code</a>` : ""}
-    <button class="ghost-btn" id="rCite">Copy citation</button>`;
+    <button class="ghost-btn" id="rCite">Copy citation</button>
+    <button class="ghost-btn ${savedToLibrary.has(p.id) ? "on" : ""}" id="rSave" title="Download the PDF into your library folder">${savedToLibrary.has(p.id) ? "✓ In library" : "⤓ Save to library"}</button>
+    <button class="ghost-btn" id="rIdea" title="Start an idea that links this paper">💡 New idea</button>`;
   const sec = (title, body) => (body ? `<div class="sec"><h4>${title}</h4><p>${esc(body)}</p></div>` : "");
   $("#rSummary").innerHTML = `
     <p class="tldr-big">${esc(s.tldr || "")}</p>
@@ -471,6 +572,39 @@ async function ask(q) {
     chats.set(p.id, [...hist, { q, a: answer }]);
   } catch (err) { toast(err.message); }
   if (state.items[state.readerIdx]?.id === p.id) renderChat();
+}
+
+// Open one Radar paper in the reader from another section (Home, an idea's linked papers…)
+async function openRadarPaper(id) {
+  showSection("radar");
+  let i = state.items.findIndex((p) => p.id === id);
+  if (i < 0) {
+    Object.assign(state, { view: "all", topicId: null, subtopic: null, q: "", sweepId: null, relevantOnly: false });
+    $("#search").value = "";
+    $("#relevantOnly").checked = false;
+    renderTopics(); renderSubtopics();
+    await Promise.all([loadPapers(), refreshCounts()]);
+    while ((i = state.items.findIndex((p) => p.id === id)) < 0 && state.items.length < state.total) await loadPapers(true);
+  }
+  if (i >= 0) openReader(i);
+}
+
+async function saveToLibrary(p, btn) {
+  if (savedToLibrary.has(p.id)) return showSection("library");
+  btn.disabled = true;
+  btn.textContent = "Downloading…";
+  try {
+    const r = await api(`/api/library/from-paper/${p.id}`, { method: "POST", body: {} });
+    savedToLibrary.add(p.id);
+    toast(r.already ? "Already in your library" : `Saved to your library as ${r.filename}`, 4000);
+    btn.textContent = "✓ In library";
+    btn.classList.add("on");
+  } catch (e) {
+    toast(e.message, 6000);
+    btn.textContent = "⤓ Save to library";
+    if (/library folder/.test(e.message)) showSection("library");
+  }
+  btn.disabled = false;
 }
 
 // ---------------------------------------------------------------- settings & topic editor
@@ -729,7 +863,26 @@ function bind() {
   $("#sort").onchange = (e) => { state.sort = e.target.value; savePrefs(); loadPapers(); };
 
   let t;
-  $("#search").oninput = (e) => { clearTimeout(t); t = setTimeout(() => go({ q: e.target.value.trim() }), 250); };
+  $("#search").oninput = (e) => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const q = e.target.value.trim();
+      if (state.section === "radar") return go({ q });
+      if (state.section === "home") { showSection("radar"); $("#search").value = q; return go({ q }); }
+      Sections[state.section]?.search?.(q);
+    }, 250);
+  };
+  $("#sectionNav").onclick = (e) => {
+    const a = e.target.closest("[data-section]");
+    if (!a) return;
+    e.preventDefault();
+    showSection(a.dataset.section);
+  };
+  window.addEventListener("hashchange", () => {
+    const name = location.hash.slice(1);
+    if (SECTIONS.includes(name) && name !== state.section) showSection(name, { push: false });
+  });
+  $("#drawerScrim").onclick = closeDrawer;
   $("#feedStatus").onclick = (e) => {
     const c = e.target.closest("[data-clear]")?.dataset.clear;
     if (c === "sweep") go({ sweepId: null });
@@ -763,6 +916,11 @@ function bind() {
   $("#rRegen").onclick = () => loadDive(true);
   $("#reader").addEventListener("click", async (e) => {
     if (e.target.id === "rCite") { await navigator.clipboard.writeText(bibtex(state.items[state.readerIdx])); toast("BibTeX copied"); }
+    if (e.target.id === "rSave") saveToLibrary(state.items[state.readerIdx], e.target);
+    if (e.target.id === "rIdea") {
+      const p = state.items[state.readerIdx];
+      Sections.ideas.create({ title: `Idea from: ${p.title}`, papers: [{ source: "radar", id: p.id, title: p.title }] });
+    }
     const s = e.target.closest("[data-suggest]");
     if (s) ask(s.dataset.suggest);
   });
@@ -801,20 +959,25 @@ function bind() {
   document.addEventListener("keydown", onKey);
 }
 
+const SECTION_KEYS = { h: "home", r: "radar", l: "library", c: "conferences", i: "ideas", p: "projects" };
+
 function onKey(e) {
   if (document.querySelector("dialog[open]")) return;
-  const typing = e.target.matches("input, textarea, select");
+  const typing = e.target.matches("input, textarea, select, [contenteditable]");
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
-    if (state.readerIdx >= 0) closeReader();
+    if (drawerOpen()) closeDrawer();
+    else if (state.readerIdx >= 0) closeReader();
     return;
   }
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "/") { e.preventDefault(); $("#search").focus(); return; }
+  if (e.key === "?") { $("#helpModal").showModal(); return; }
+  if (SECTION_KEYS[e.key] && !drawerOpen() && state.readerIdx < 0) { showSection(SECTION_KEYS[e.key]); return; }
+  if (state.section !== "radar") { if (!drawerOpen()) Sections[state.section]?.onKey?.(e); return; }
   const reading = state.readerIdx >= 0;
   const cur = state.items[reading ? state.readerIdx : state.sel];
   switch (e.key) {
-    case "/": e.preventDefault(); $("#search").focus(); break;
-    case "?": $("#helpModal").showModal(); break;
     case "S": startSweep(); break;
     case "j": case "ArrowDown": if (reading) stepReader(1); else select(state.sel + 1); e.preventDefault(); break;
     case "k": case "ArrowUp": if (reading) stepReader(-1); else select(state.sel - 1); e.preventDefault(); break;
@@ -828,10 +991,18 @@ function onKey(e) {
   }
 }
 
-(async function init() {
-  const sweepParam = new URLSearchParams(location.search).get("sweep");
+// runs after every section script has registered itself
+window.addEventListener("DOMContentLoaded", async function init() {
+  const params = new URLSearchParams(location.search);
+  const sweepParam = params.get("sweep");
   if (sweepParam) Object.assign(state, { sweepId: +sweepParam, view: "all" });
   bind();
+  const fromHash = location.hash.slice(1);
+  // links from notifications (?sweep= / ?paper=) always land on the Radar
+  showSection(sweepParam || params.get("paper") ? "radar" : SECTIONS.includes(fromHash) ? fromHash : state.section);
+  api("/api/library/radar-ids").then((ids) => ids.forEach((i) => savedToLibrary.add(i))).catch(() => {});
+  refreshNavBadges();
+  setInterval(refreshNavBadges, 5 * 60 * 1000);
   await loadTopics();
   await refreshCounts();
   // land on "New" when there's something new, otherwise show everything
@@ -842,4 +1013,4 @@ function onKey(e) {
   const idx = state.items.findIndex((p) => p.id === paperParam);
   if (idx >= 0) openReader(idx);
   setTimeout(loadStatus, 4000); // pick up the background credential probe result
-})();
+});

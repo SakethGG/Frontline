@@ -71,33 +71,52 @@ async def fetch_arxiv(client: httpx.AsyncClient, topic: dict, since: date,
     }
     r = await client.get("https://export.arxiv.org/api/query", params=params, timeout=60)
     r.raise_for_status()
-    papers = []
-    for e in _arxiv_entries(r.text):
-        published = (e.findtext("a:published", "", ATOM) or "")[:10]
-        if not published or published < since.isoformat():
-            continue
-        abs_url = e.findtext("a:id", "", ATOM)
-        arxiv_id = re.sub(r"v\d+$", "", abs_url.rsplit("/abs/", 1)[-1])
-        pdf_url = next(
-            (l.get("href") for l in e.findall("a:link", ATOM) if l.get("title") == "pdf"),
-            f"https://arxiv.org/pdf/{arxiv_id}",
-        )
-        abstract = _clean(e.findtext("a:summary", "", ATOM))
-        comment = _clean(e.findtext("arxiv:comment", "", ATOM))
-        papers.append({
-            "title": _clean(e.findtext("a:title", "", ATOM)),
-            "authors": [_clean(a.findtext("a:name", "", ATOM)) for a in e.findall("a:author", ATOM)],
-            "abstract": abstract,
-            "published": published,
-            "url": f"https://arxiv.org/abs/{arxiv_id}",
-            "pdf_url": pdf_url.replace("http://", "https://"),
-            "code_url": _code_url(abstract, comment),
-            "venue": comment if len(comment) < 120 else "arXiv",
-            "arxiv_id": arxiv_id,
-            "doi": e.findtext("arxiv:doi", "", ATOM) or "",
-            "sources": ["arXiv"],
-        })
-    return papers
+    papers = [arxiv_paper(e) for e in _arxiv_entries(r.text)]
+    return [p for p in papers if p["published"] and p["published"] >= since.isoformat()]
+
+
+def arxiv_paper(e: ET.Element) -> dict:
+    abs_url = e.findtext("a:id", "", ATOM)
+    arxiv_id = re.sub(r"v\d+$", "", abs_url.rsplit("/abs/", 1)[-1])
+    pdf_url = next(
+        (l.get("href") for l in e.findall("a:link", ATOM) if l.get("title") == "pdf"),
+        f"https://arxiv.org/pdf/{arxiv_id}",
+    )
+    abstract = _clean(e.findtext("a:summary", "", ATOM))
+    comment = _clean(e.findtext("arxiv:comment", "", ATOM))
+    return {
+        "title": _clean(e.findtext("a:title", "", ATOM)),
+        "authors": [_clean(a.findtext("a:name", "", ATOM)) for a in e.findall("a:author", ATOM)],
+        "abstract": abstract,
+        "published": (e.findtext("a:published", "", ATOM) or "")[:10],
+        "url": f"https://arxiv.org/abs/{arxiv_id}",
+        "pdf_url": pdf_url.replace("http://", "https://"),
+        "code_url": _code_url(abstract, comment),
+        "venue": comment if len(comment) < 120 else "arXiv",
+        "arxiv_id": arxiv_id,
+        "doi": e.findtext("arxiv:doi", "", ATOM) or "",
+        "sources": ["arXiv"],
+    }
+
+
+async def lookup(client: httpx.AsyncClient, arxiv_id: str = "", doi: str = "") -> dict | None:
+    """Canonical metadata for one paper by arXiv ID or DOI (None if neither resolves)."""
+    try:
+        if arxiv_id:
+            r = await client.get("https://export.arxiv.org/api/query",
+                                 params={"id_list": arxiv_id, "max_results": 1}, timeout=30)
+            r.raise_for_status()
+            entries = [e for e in _arxiv_entries(r.text) if e.findtext("a:title", "", ATOM).strip()]
+            if entries:
+                return arxiv_paper(entries[0])
+        if doi:
+            params = {"mailto": config.OPENALEX_MAILTO} if config.OPENALEX_MAILTO else {}
+            r = await client.get(f"https://api.openalex.org/works/doi:{doi}", params=params, timeout=30)
+            if r.status_code == 200:
+                return openalex_work(r.json())
+    except (httpx.HTTPError, ET.ParseError, ValueError) as e:
+        log.info("Lookup failed for arxiv=%r doi=%r: %s", arxiv_id, doi, e)
+    return None
 
 
 # ---------------------------------------------------------------- Semantic Scholar

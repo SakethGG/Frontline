@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, notify, researchers, sources
+from . import conferences, config, db, library, notify, planner, researchers, sources
 from .summarizer import API_ERRORS, explain, summarizer
 from .sweep import auto_sweep_loop, manager
 
@@ -24,6 +24,9 @@ async def lifespan(app: FastAPI):
     db.init()
     asyncio.create_task(_refresh_researcher_areas())
     asyncio.create_task(summarizer.probe())
+    asyncio.create_task(conferences.refresh_if_stale())
+    if (base := library.root()) and base.is_dir():
+        library.manager.start()  # pick up PDFs added to the folder while the app was closed
     task = asyncio.create_task(auto_sweep_loop())
     yield
     task.cancel()
@@ -31,6 +34,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Frontline", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
+app.include_router(library.router)
+app.include_router(conferences.router)
+app.include_router(planner.router)
+
+
+@app.get("/api/calendar.ics")
+def calendar():
+    """Tracked deadlines and dated tasks, for importing into Google Calendar / Outlook / Apple Calendar."""
+    return conferences.ics_response()
 
 
 @app.middleware("http")

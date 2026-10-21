@@ -4,10 +4,12 @@ FRONTLINE_LLM picks the provider: "claude", "openai", or "auto" (OpenAI when onl
 is set, otherwise Claude).
 """
 
+import asyncio
 import base64
 import json
 import logging
 import re
+from pathlib import Path
 
 import anthropic
 import httpx
@@ -264,7 +266,14 @@ class Summarizer:
 
     async def _paper_content(self, paper: dict) -> list[dict]:
         """The PDF when we can fetch it, else the abstract, as provider-neutral parts."""
-        if paper.get("pdf_url"):
+        if paper.get("pdf_path"):  # a library paper: the PDF is on disk
+            try:
+                data = await asyncio.to_thread(Path(paper["pdf_path"]).read_bytes)
+                if data[:4] == b"%PDF" and len(data) < 30 * 1024 * 1024:
+                    return [{"pdf": base64.standard_b64encode(data).decode(), "title": paper["title"]}]
+            except OSError as e:
+                log.info("Could not read %s (%s), using abstract", paper["pdf_path"], e)
+        elif paper.get("pdf_url"):
             try:
                 async with httpx.AsyncClient(follow_redirects=True, timeout=60) as c:
                     r = await c.get(paper["pdf_url"], headers={"User-Agent": "Frontline/0.1"})
@@ -350,6 +359,107 @@ class Summarizer:
             log.warning("digest failed: %s", e)
         return fallback_digest(items)
 
+    # ------------------------------------------------------------ library
+
+    async def library_card(self, interests: list[str], paper: dict) -> dict | None:
+        """Title/authors/year, a TL;DR and interest tags for a PDF in the library, read from its
+        first pages. None when the AI is off or the call fails (callers fall back to keywords)."""
+        if not self.enabled:
+            return None
+        schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "The paper's real title, properly capitalized."},
+                "authors": {"type": "array", "items": {"type": "string"}},
+                "year": {"type": "string", "description": "Four-digit year, or empty if unknown."},
+                "tldr": {"type": "string", "description": "One sentence, at most 30 words."},
+                "tags": {"type": "array", "items": {"type": "string", "enum": [*interests, "Other"]}},
+                "relevance": {"type": "integer", "description": "0-10: how useful to someone with these interests."},
+            },
+            "required": ["title", "authors", "year", "tldr", "tags", "relevance"],
+            "additionalProperties": False,
+        }
+        prompt = (
+            f"<reader_interests>\n{chr(10).join('- ' + i for i in interests) or '(none given)'}\n</reader_interests>\n\n"
+            f"<known_metadata>\nFile: {paper.get('rel_path', '')}\nTitle guess: {paper.get('title', '')}\n"
+            f"Authors guess: {', '.join(paper.get('authors', [])[:12])}\nYear guess: {paper.get('year', '')}\n"
+            f"</known_metadata>\n\n<first_pages>\n{(paper.get('abstract') or '')[:1500]}\n"
+            f"{(paper.get('excerpt') or '')[:6000]}\n</first_pages>\n\n"
+            "This PDF is in the reader's paper library. Fill in its real metadata from the text "
+            "(fix the guesses if they are wrong), summarize it, and tag only the interests it "
+            "genuinely covers."
+        )
+        try:
+            data = await self._json(system=CARD_SYSTEM, prompt=prompt, schema=schema, effort=config.SUMMARY_EFFORT)
+        except AUTH_ERRORS as e:
+            self._disable(f"{type(e).__name__}: {e}")
+            return None
+        except (*API_ERRORS, Refused, ValueError) as e:
+            log.warning("library card failed for %r: %s", paper.get("rel_path"), e)
+            return None
+        data["relevance"] = max(0, min(10, int(data.get("relevance", 0))))
+        data["tags"] = [t for t in data["tags"] if t != "Other"]
+        return data
+
+    # ------------------------------------------------------------ ideation assistant
+
+    IDEA_MODES = {
+        "critique": (
+            "Pressure-test this research idea like a sharp, constructive senior colleague. Markdown sections:\n"
+            "## Verdict (one line)\n## What's genuinely strong\n## Weak spots & risks\n"
+            "## Novelty check (against the linked papers and what you know of the field; name specific prior work)\n"
+            "## A sharper version of the idea\n## Next 3 concrete steps (each doable within a week)"
+        ),
+        "expand": (
+            "Brainstorm with me. Give 6 distinct directions this idea could go, as a Markdown list. For each: "
+            "a bold one-line name, the core twist, why it might work, and the cheapest experiment that would "
+            "test it. Mix safe extensions with 1-2 bold, contrarian bets. End with a line recommending one."
+        ),
+        "proposal": (
+            "Turn this into a research proposal draft in Markdown with these sections:\n"
+            "## Title\n## Abstract (≤150 words)\n## Motivation & problem\n## Research questions / hypotheses\n"
+            "## Related work & gap\n## Approach\n## Experiments & evaluation (datasets/platforms, baselines, metrics)\n"
+            "## Expected contributions\n## Risks & mitigations\n## Timeline (phases with rough durations)\n"
+            "## Resources needed\nKeep it concrete and specific to the idea; mark assumptions you had to make."
+        ),
+    }
+
+    async def idea_assist(self, mode: str, idea: dict, papers: list[dict], context: str) -> str:
+        """Markdown help for an idea: critique, brainstorm, or a proposal draft."""
+        if not self.enabled:
+            return f"_The idea assistant needs an AI key: set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in `.env` and restart ({self.disabled_reason or 'no key'})._"
+        return await self._text(
+            system="You are a creative, rigorous research advisor helping a researcher develop ideas.",
+            messages=[{"role": "user", "content": _idea_prompt(idea, papers, context) + self.IDEA_MODES[mode]}],
+            effort="medium", max_tokens=16000,
+        )
+
+    async def idea_roadmap(self, idea: dict, papers: list[dict], context: str) -> list[dict]:
+        """A milestone plan for an idea: [{title, detail, weeks}]."""
+        if not self.enabled:
+            raise ValueError("Roadmaps need an AI key: set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env and restart")
+        schema = {
+            "type": "object",
+            "properties": {"milestones": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short, action-oriented."},
+                    "detail": {"type": "string", "description": "One or two sentences: what done looks like."},
+                    "weeks": {"type": "integer", "description": "Rough effort in weeks."},
+                },
+                "required": ["title", "detail", "weeks"], "additionalProperties": False,
+            }}},
+            "required": ["milestones"], "additionalProperties": False,
+        }
+        data = await self._json(
+            system="You are a pragmatic research advisor who turns ideas into realistic plans.",
+            prompt=_idea_prompt(idea, papers, context) +
+                   "Break this into 5-9 sequential milestones from first experiment to submission-ready "
+                   "paper. Front-load the riskiest assumption so it is tested early.",
+            schema=schema, effort="medium",
+        )
+        return data["milestones"]
+
 
 # ---------------------------------------------------------------- fallback (no LLM)
 
@@ -389,6 +499,31 @@ def fallback_card(topic: dict, paper: dict) -> dict:
         "relevance_reason": f"Keyword match ({hits} topic phrase{'s' if hits != 1 else ''}); "
                             "add an AI key for AI summaries.",
     }
+
+
+def _idea_prompt(idea: dict, papers: list[dict], context: str) -> str:
+    linked = "\n".join(
+        f"- {p.get('title', '')}" + (f" — {p['tldr']}" if p.get("tldr") else "") for p in papers[:20]
+    ) or "(none)"
+    milestones = "\n".join(f"- {m.get('title', '')}" for m in idea.get("milestones") or []) or "(none)"
+    return (
+        f"<researcher_context>\n{context or '(not given)'}\n</researcher_context>\n\n"
+        f"<idea kind=\"{idea.get('kind', 'idea')}\" status=\"{idea.get('status', '')}\">\n"
+        f"Title: {idea.get('title', '')}\nTags: {', '.join(idea.get('tags') or [])}\n"
+        f"Notes:\n{idea.get('body') or '(empty)'}\n\nCurrent milestones:\n{milestones}\n</idea>\n\n"
+        f"<linked_papers>\n{linked}\n</linked_papers>\n\n"
+    )
+
+
+def keyword_tags(interests: list[str], text: str) -> list[str]:
+    """Interests whose words show up in the text (the no-AI tagger for library papers)."""
+    text = text.lower()
+    out = []
+    for i in interests:
+        words = [w for w in re.findall(r"[a-z][a-z0-9-]*", i.lower()) if len(w) > 3]
+        if i.lower() in text or (words and all(re.search(rf"\b{re.escape(w[:6])}", text) for w in words)):
+            out.append(i)
+    return out
 
 
 def fallback_digest(items: list[tuple[dict, dict]]) -> str:

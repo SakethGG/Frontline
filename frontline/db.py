@@ -58,6 +58,98 @@ CREATE TABLE IF NOT EXISTS sweeps (
     stats TEXT NOT NULL DEFAULT '{}',
     digest TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+-- Paper library: one row per PDF in the library folder (rel_path is relative to that folder).
+CREATE TABLE IF NOT EXISTS library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rel_path TEXT UNIQUE NOT NULL,
+    file_hash TEXT NOT NULL DEFAULT '',
+    file_size INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL,
+    authors TEXT NOT NULL DEFAULT '[]',
+    year TEXT NOT NULL DEFAULT '',
+    abstract TEXT NOT NULL DEFAULT '',
+    excerpt TEXT NOT NULL DEFAULT '',
+    venue TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    arxiv_id TEXT NOT NULL DEFAULT '',
+    doi TEXT NOT NULL DEFAULT '',
+    tldr TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
+    relevance INTEGER NOT NULL DEFAULT 0,
+    tagged_by TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'unread',
+    starred INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    deep_dive TEXT NOT NULL DEFAULT '',
+    missing INTEGER NOT NULL DEFAULT 0,
+    radar_paper_id INTEGER,
+    added_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+-- Conferences & workshops the user tracks (catalog ones keep their catalog id in source_key).
+CREATE TABLE IF NOT EXISTS conferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT UNIQUE,
+    kind TEXT NOT NULL DEFAULT 'conference',
+    name TEXT NOT NULL,
+    full_name TEXT NOT NULL DEFAULT '',
+    year INTEGER,
+    parent TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    start_date TEXT NOT NULL DEFAULT '',
+    end_date TEXT NOT NULL DEFAULT '',
+    date_text TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
+    rankings TEXT NOT NULL DEFAULT '',
+    deadlines TEXT NOT NULL DEFAULT '[]',
+    notes TEXT NOT NULL DEFAULT '',
+    custom INTEGER NOT NULL DEFAULT 0,  -- edited by hand: catalog refreshes leave it alone
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ideas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'idea',
+    status TEXT NOT NULL DEFAULT 'spark',
+    tags TEXT NOT NULL DEFAULT '[]',
+    papers TEXT NOT NULL DEFAULT '[]',
+    milestones TEXT NOT NULL DEFAULT '[]',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    conference_id INTEGER REFERENCES conferences(id) ON DELETE SET NULL,
+    idea_id INTEGER REFERENCES ideas(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+-- status: todo | doing | done | future ("future" = the someday/later backlog)
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'todo',
+    priority INTEGER NOT NULL DEFAULT 1,
+    due TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    done_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 """
 
 # Columns added after the first release; init() adds any that an older database is missing.
@@ -356,3 +448,96 @@ def get_sweep(sweep_id: int) -> dict | None:
     with _lock:
         r = conn().execute("SELECT * FROM sweeps WHERE id = ?", (sweep_id,)).fetchone()
     return _row(r, ("stats",))
+
+
+# ---------------------------------------------------------------- settings
+
+def get_setting(key: str, default=None):
+    with _lock:
+        r = conn().execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return json.loads(r[0]) if r else default
+
+
+def set_setting(key: str, value) -> None:
+    with _lock:
+        c = conn()
+        c.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
+                  "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, json.dumps(value)))
+        c.commit()
+
+
+# ---------------------------------------------------------------- planner records
+# Library papers, conferences, ideas, projects and tasks are plain records: these helpers
+# handle JSON/bool columns and timestamps, and ignore keys that aren't columns.
+
+RECORD_JSON = {
+    "library": ("authors", "tags"),
+    "conferences": ("tags", "deadlines"),
+    "ideas": ("tags", "papers", "milestones"),
+    "projects": (),
+    "tasks": (),
+}
+RECORD_BOOL = ("starred", "missing", "pinned", "custom")
+_cols: dict[str, set[str]] = {}
+
+
+def _columns(table: str) -> set[str]:
+    if table not in _cols:
+        with _lock:
+            _cols[table] = {r[1] for r in conn().execute(f"PRAGMA table_info({table})")}
+    return _cols[table]
+
+
+def _encode(table: str, d: dict) -> dict:
+    cols = _columns(table)
+    out = {}
+    for k, v in d.items():
+        if k not in cols or k == "id":
+            continue
+        if k in RECORD_JSON[table]:
+            v = json.dumps(v)
+        elif k in RECORD_BOOL:
+            v = int(bool(v))
+        out[k] = v
+    return out
+
+
+def get_record(table: str, rid: int) -> dict | None:
+    with _lock:
+        r = conn().execute(f"SELECT * FROM {table} WHERE id = ?", (rid,)).fetchone()
+    return _row(r, RECORD_JSON[table])
+
+
+def list_records(table: str, where: str = "", args: tuple | list = (), order: str = "id") -> list[dict]:
+    sql = f"SELECT * FROM {table}" + (f" WHERE {where}" if where else "") + f" ORDER BY {order}"
+    with _lock:
+        rows = conn().execute(sql, tuple(args)).fetchall()
+    return [_row(r, RECORD_JSON[table]) for r in rows]
+
+
+def insert_record(table: str, d: dict) -> dict:
+    now = now_iso()
+    d = _encode(table, {"created_at": now, "added_at": now, "updated_at": now, **d})
+    with _lock:
+        c = conn()
+        cur = c.execute(f"INSERT INTO {table} ({', '.join(d)}) VALUES ({', '.join('?' * len(d))})",
+                        tuple(d.values()))
+        c.commit()
+    return get_record(table, cur.lastrowid)
+
+
+def update_record(table: str, rid: int, d: dict) -> dict | None:
+    d = _encode(table, {**d, "updated_at": now_iso()})
+    with _lock:
+        c = conn()
+        c.execute(f"UPDATE {table} SET {', '.join(f'{k} = ?' for k in d)} WHERE id = ?",
+                  (*d.values(), rid))
+        c.commit()
+    return get_record(table, rid)
+
+
+def delete_record(table: str, rid: int) -> None:
+    with _lock:
+        c = conn()
+        c.execute(f"DELETE FROM {table} WHERE id = ?", (rid,))
+        c.commit()

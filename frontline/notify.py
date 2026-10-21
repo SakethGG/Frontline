@@ -1,4 +1,4 @@
-"""Out-of-browser notifications: native Windows toasts (desktop app), ntfy.sh push and email digests."""
+"""Out-of-browser notifications: native Windows/macOS notifications (desktop app), ntfy.sh push and email digests."""
 
 import asyncio
 import html
@@ -6,6 +6,7 @@ import logging
 import os
 import smtplib
 import subprocess
+import sys
 from email.message import EmailMessage
 from xml.sax.saxutils import escape
 
@@ -27,7 +28,17 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 """
 
 
+# title and body arrive via argv so quotes in paper titles can't break the AppleScript
+_MAC_NOTIFY = 'on run argv\ndisplay notification (item 2 of argv) with title (item 1 of argv)\nend run'
+
+
 def desktop_toast(title: str, lines: list[str]) -> None:
+    if sys.platform == "darwin":
+        subprocess.run(
+            ["osascript", "-e", _MAC_NOTIFY, title, "\n".join(lines[:2])],
+            capture_output=True, timeout=30, check=True,
+        )
+        return
     texts = "".join(f"<text>{escape(t)}</text>" for t in [title, *lines][:3])
     xml = f'<toast><visual><binding template="ToastGeneric">{texts}</binding></visual></toast>'
     subprocess.run(
