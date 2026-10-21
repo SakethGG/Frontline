@@ -51,7 +51,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 1. **☕ Open the app.** Your morning sweep has already run (if you scheduled it), and a notification tells you what it found.
 2. **👀 Skim the cards.** The best papers are at the top with a green score. Drag the relevance slider to hide the rest.
 3. **📖 Go deep on the one that matters.** Click **Deep dive** and AI reads the *full PDF*, then gives you the method, the real numbers and a read/skip verdict. Got a question? **Ask the paper.**
-4. **💾 Keep it.** **Save to library** puts the PDF into your Google Drive folder, already tagged and summarized.
+4. **💾 Keep it.** **Save to library** puts the PDF into your library folder, already tagged and summarized.
 5. **💡 Act on it.** Turn the spark into an idea, the idea into a proposal, and the proposal into a project with tasks and a target conference.
 
 ---
@@ -66,7 +66,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 |---|---|
 | 🏠 **Home** | Today at a glance: next deadlines, tasks due this week, the best new papers, your reading queue and recent ideas. |
 | 📡 **Radar** | Your feed of fresh papers, with AI summaries, scores and a sweep digest. |
-| 📚 **Library** | Your PDFs in a folder you choose (Google Drive, Dropbox, OneDrive), tagged by your interests automatically. |
+| 📚 **Library** | Your PDFs in a folder you choose (any local folder, or a synced one), tagged by your interests automatically. |
 | 🗓️ **Conferences** | Live countdowns to the deadlines you care about, from a catalog of ML, vision, NLP and robotics venues. |
 | 💡 **Ideas** | Capture ideas, grow them into proposals and roadmaps, and pressure-test them with AI. |
 | ✅ **Projects** | A to-do board and backlog for each project, counting down to its target venue. |
@@ -149,20 +149,20 @@ Open http://localhost:8000. Press `Ctrl+C` to stop.
 <details>
 <summary><b>📚 Library</b></summary>
 
-You pick a folder, ideally inside **Google Drive for desktop**, Dropbox or OneDrive, so the library syncs across devices. Frontline keeps plain PDF files there:
+You pick any folder on your computer. Put it inside **Google Drive for desktop**, Dropbox or OneDrive if you also want it synced across devices. Frontline keeps plain PDF files there:
 
-- Sub-folders are **collections**.
+- Sub-folders are **collections**, and you browse them like folders: clicking a paper opens the PDF, **Details** opens its notes.
 - Files you drop into the folder from anywhere show up on the next scan. Scans run at startup and when you open the Library.
 - Moving or renaming a file keeps its notes, because files are matched by content.
 
 Every PDF is identified from its arXiv ID or DOI when it has one, so you get the exact title, authors and abstract. It's then tagged against **your interests** and scored for fit. By default your interests are your Radar topics and subtopics, and you can edit them. With an AI key, tagging is one short call per new paper; without one, it uses keyword matching.
 
-- **Filtering:** by interest, collection or reading status (To read / Reading / Read). Star papers and sort by relevance to you.
+- **Filtering:** search, filter by interest, or show starred papers. Sort by relevance to you, date added, year or title.
 - **Paper drawer:** take notes, edit tags, move a paper between collections, copy its BibTeX, and run **Deep dive** or **Ask** on your local PDF.
 - **Adding papers:** drag and drop, or **+ Add PDFs**. On any Radar paper, **⤓ Save to library** downloads its PDF into the folder and carries over its AI card.
 - **Removing papers:** a removed PDF moves to a hidden `.frontline-trash` folder inside the library, so nothing is lost.
 
-**Google Drive tip:** with Drive for desktop set to *stream* files, Frontline reads each new PDF once to index it, and Drive then downloads it. To keep a large library available offline, mark the folder *Available offline*.
+**Google Drive tip** (if your library is in Drive): with Drive for desktop set to *stream* files, Frontline reads each new PDF once to index it, and Drive then downloads it. To keep a large library available offline, mark the folder *Available offline*.
 
 </details>
 
@@ -245,7 +245,7 @@ All settings live in `.env` (copy it from `.env.example`). Only an API key is ne
 | `NTFY_TOPIC` | Push notifications. Install the ntfy app, subscribe to a hard-to-guess topic name, and put that name here |
 | `NTFY_SERVER` | Your own ntfy server, if you don't use `https://ntfy.sh` |
 | `SMTP_*`, `DIGEST_TO` | Email digest (for Gmail, use an app password with `smtp.gmail.com:587`) |
-| `FRONTLINE_LIBRARY_DIR` | Default library folder (picking one in the app overrides it). E.g. `G:\My Drive\Research Papers` on Windows, or `~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Research Papers` on a Mac |
+| `FRONTLINE_LIBRARY_DIR` | Default library folder (picking one in the app overrides it). E.g. `~/Documents/Research Papers`, or a folder inside Google Drive / Dropbox to sync it |
 | `SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_MAILTO` | Optional. Raise API rate limits |
 | `PUBLIC_URL` | Base URL used for links in notifications (default `http://localhost:8000`). The desktop app sets it for you |
 | `FRONTLINE_DB` | Where the SQLite database lives (default `data/frontline.db`) |

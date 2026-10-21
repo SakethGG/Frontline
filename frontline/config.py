@@ -40,8 +40,8 @@ MAX_PAPERS_PER_RESEARCHER = _int("FRONTLINE_MAX_PAPERS_PER_RESEARCHER", 60)
 CONCURRENCY = _int("FRONTLINE_CONCURRENCY", 4)
 AUTO_SWEEP_HOURS = _float("FRONTLINE_AUTO_SWEEP_HOURS", 0)
 
-# Paper library: the folder holding your PDFs (e.g. a Google Drive / Dropbox / OneDrive synced
-# folder). Can also be picked in the app, which takes precedence.
+# Paper library: the folder holding your PDFs (any local folder, or a Google Drive / Dropbox /
+# OneDrive synced one). Can also be picked in the app, which takes precedence.
 LIBRARY_DIR = os.getenv("FRONTLINE_LIBRARY_DIR") or ""
 # Conference catalog: Hugging Face's community-maintained AI deadlines (one YAML file per venue)
 CONFERENCE_CATALOG_URL = (os.getenv("FRONTLINE_CONFERENCE_CATALOG_URL")

@@ -1,4 +1,4 @@
-// Library: the PDFs in the user's chosen folder (e.g. inside Google Drive), tagged by interest.
+// Library: the PDFs in the user's chosen folder (local, or cloud-synced), tagged by interest.
 // Collections are sub-folders, browsed like a file manager: a folder shows its sub-folders and the
 // PDFs directly inside it; searching or filtering looks through everything below it.
 // Everything is filtered client-side; libraries are small enough.
@@ -12,6 +12,7 @@
   };
   const chats = new Map(), dives = new Map();
   Sections.library = L;
+  const FOLDER = `<img class="folder-ico" src="/static/folder.png" alt="" aria-hidden="true">`;
 
   // ---------------------------------------------------------------- loading
 
@@ -28,7 +29,7 @@
     L.meta = await api("/api/library/meta");
     const m = L.meta;
     $("#libPath").innerHTML = m.root
-      ? `📁 <span title="${esc(m.root)}">${esc(m.root)}</span> <button class="text-btn" id="libChangeDir">change</button>`
+      ? `<span class="lib-path">${FOLDER} <span title="${esc(m.root)}">${esc(m.root)}</span> <button class="text-btn" id="libChangeDir">change</button></span>`
       : "Your papers, in a folder you choose.";
     $("#libSetup").hidden = m.root_exists;
     $("#libMain").hidden = !m.root_exists;
@@ -46,16 +47,15 @@
     const m = L.meta;
     $("#libSetup").innerHTML = `
       <h2>Where should your papers live?</h2>
-      ${m.root ? `<p class="warn-box">Can't find <b>${esc(m.root)}</b>. If it's in Google Drive, check that Drive for desktop is running, or pick another folder.</p>` : ""}
-      <p>Pick a folder for your PDFs. A folder inside <b>Google Drive</b> (or Dropbox / OneDrive) keeps the library synced across your devices.
-      Frontline keeps plain PDF files there: drop files in from anywhere and they show up here, and <b>sub-folders become collections</b>.</p>
+      ${m.root ? `<p class="warn-box">Can't find <b>${esc(m.root)}</b>. If it's on an external drive or in a synced folder (Google Drive, Dropbox…), check that it's connected, or pick another folder.</p>` : ""}
+      <p>Pick any folder on this computer for your PDFs. Frontline keeps plain PDF files there: drop files in from anywhere and they show up here, and <b>sub-folders become collections</b>.</p>
       ${m.suggestions.length ? `<div class="suggestions">${m.suggestions.map((s) => `
         <button class="ghost-btn" data-use-dir="${esc(s)}">Use <b>${esc(s)}</b></button>`).join("")}</div>` : ""}
       <form class="follow-search" id="libDirForm">
-        <input id="libDirInput" value="${esc(m.root || "")}" placeholder="Full path, e.g. ${navigator.platform.startsWith("Win") ? "G:\\My Drive\\Research Papers" : "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Research Papers"}" aria-label="Library folder">
+        <input id="libDirInput" value="${esc(m.root || "")}" placeholder="Full path, e.g. ${navigator.platform.startsWith("Win") ? "C:\\Users\\you\\Documents\\Research Papers" : "~/Documents/Research Papers"}" aria-label="Library folder">
         <button class="primary-btn" type="submit">Use this folder</button>
       </form>
-      <p class="hint">The folder is created if it doesn't exist. No Google Drive folder yet? Install <a href="https://www.google.com/drive/download/" target="_blank" rel="noopener">Google Drive for desktop</a> and your Drive shows up as a folder on this computer.</p>`;
+      <p class="hint">The folder is created if it doesn't exist. Want it on your other devices too? Pick a folder inside Google Drive, Dropbox or OneDrive and it syncs like any other file.</p>`;
   }
 
   async function useDir(dir) {
@@ -184,7 +184,7 @@
     const missing = L.items.length - live.length;
     const row = (key, label, count, depth = 0) => `
       <button class="person-row coll ${L.collection === key ? "active" : ""}" data-coll="${esc(key ?? "\u0000")}" style="--depth:${depth}">
-        <span class="coll-icon" aria-hidden="true">${key === null ? "▤" : key === "__missing" ? "⚠" : key === "" ? "◌" : "📁"}</span>
+        <span class="coll-icon" aria-hidden="true">${key === "__missing" ? "⚠" : FOLDER}</span>
         <span class="person-main"><span class="person-name">${esc(label)}</span></span>
         ${count ? `<span class="count">${count}</span>` : ""}
       </button>`;
@@ -206,38 +206,36 @@
       `<button class="chip ghost" id="libEditInterests">${ints.length ? "✎ Edit" : "+ Add your interests"}</button>`;
   }
 
-  function shortAuthors(a) {
-    return a.length > 3 ? `${a.slice(0, 2).join(", ")} … ${a[a.length - 1]}` : a.join(", ");
-  }
-
-  function folderHTML(c) {
+    function folderHTML(c) {
     const n = L.items.filter((r) => !r.missing && (r.collection === c || r.collection.startsWith(c + "/"))).length;
     return `
-    <article class="lib-row folder" data-coll="${esc(c)}" title="Open folder">
-      <span class="coll-icon" aria-hidden="true">📁</span>
-      <div class="lr-main"><h3>${esc(c.split("/").pop())}</h3></div>
-      <div class="lr-side"><span class="lr-meta">${plural(n, "paper")}</span></div>
+    <article class="lib-tile folder" data-coll="${esc(c)}" title="Open folder">
+      <div class="sheet">${FOLDER}</div>
+      <h3>${esc(c.split("/").pop())}</h3>
+      <div class="lt-meta">${plural(n, "paper")}</div>
     </article>`;
   }
 
-  function rowHTML(r) {
-    const meta = [shortAuthors(r.authors), r.year, r.venue].filter(Boolean).map(esc).join(" · ");
+  function rowHTML(r) {  // one A4-shaped tile with the paper's first page as its picture
+    const meta = [r.authors[0] && surname(r.authors[0]) + (r.authors.length > 1 ? " et al." : ""), r.year].filter(Boolean).map(esc).join(" · ");
+    const score = r.tagged_by && (r.relevance || r.tagged_by === "ai")
+      ? `<span class="score ${scoreClass(r.relevance)}" title="Match with your interests">${r.relevance}</span>` : "";
     return `
-    <article class="lib-row ${r.id === L.openId ? "selected" : ""}" data-id="${r.id}" title="${r.missing ? "" : "Open PDF"}">
-      <button class="star-btn ${r.starred ? "on" : ""}" data-act="star" title="${r.starred ? "Unstar" : "Star"}" aria-label="Star">${r.starred ? "★" : "☆"}</button>
-      <div class="lr-main">
-        <h3>${esc(r.title)}</h3>
-        <div class="lr-meta">${meta || esc(r.filename)}${r.collection && r.collection !== (L.collection || "") ? ` · <span class="coll-tag">📁 ${esc(r.collection)}</span>` : ""}</div>
-        ${r.tldr ? `<p class="lr-tldr">${esc(r.tldr)}</p>` : ""}
-        ${r.tags.length ? `<div class="tags">${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
-      </div>
-      <div class="lr-side">
-        ${!r.tagged_by ? `<span class="score lo" title="Not tagged yet">…</span>` : r.relevance || r.tagged_by === "ai" ? `<span class="score ${scoreClass(r.relevance)}" title="Match with your interests">${r.relevance}/10</span>` : ""}
+    <article class="lib-tile ${r.id === L.openId ? "selected" : ""}" data-id="${r.id}" title="${esc(r.title)}${r.missing ? "" : "\nClick to open the PDF"}">
+      <div class="sheet ${r.missing ? "nothumb" : ""}">
+        ${r.missing ? "" : `<img src="/api/library/${r.id}/thumb?h=${esc(r.file_hash)}" alt="" loading="lazy" onerror="this.parentNode.classList.add('nothumb');this.remove()">`}
+        <div class="sheet-fallback"><span class="sheet-icon" aria-hidden="true">📄</span><span>${esc(r.title)}</span></div>
+        <button class="star-btn ${r.starred ? "on" : ""}" data-act="star" title="${r.starred ? "Unstar" : "Star"}" aria-label="Star">${r.starred ? "★" : "☆"}</button>
+        ${score}
         ${r.missing ? `<span class="pill missing" title="The file is no longer in the folder">missing</span>` : ""}
-        <button class="act" data-act="info" title="Notes, abstract, deep dive and Q&A">Details</button>
       </div>
+      <h3>${esc(r.title)}</h3>
+      <div class="lt-meta">${meta || esc(r.filename)}${r.collection && r.collection !== (L.collection || "") ? ` · ${FOLDER} ${esc(r.collection.split("/").pop())}` : ""}</div>
+      <button class="text-btn lt-info" data-act="info" title="Notes, abstract, deep dive and Q&A">Details</button>
     </article>`;
   }
+
+  const surname = (name) => name.trim().split(/\s+/).pop();
 
   // ---------------------------------------------------------------- actions
 
@@ -316,8 +314,8 @@
     L.openId = id;
     L.tab = "notes";
     renderDrawer(r);
-    $$(".lib-row.selected").forEach((x) => x.classList.remove("selected"));
-    $(`.lib-row[data-id="${id}"]`)?.classList.add("selected");
+    $$(".lib-tile.selected").forEach((x) => x.classList.remove("selected"));
+    $(`.lib-tile[data-id="${id}"]`)?.classList.add("selected");
   };
 
   function renderDrawer(r) {
@@ -495,7 +493,7 @@
       if (tab) { L.view = pref("lib.view", tab); return render(); }
       const coll = e.target.closest("[data-coll]")?.dataset.coll;
       if (coll !== undefined) { L.collection = coll === "\u0000" ? null : coll; return render(); }
-      const row = e.target.closest(".lib-row");
+      const row = e.target.closest(".lib-tile[data-id]");
       if (!row) return;
       const r = L.items.find((x) => x.id === +row.dataset.id);
       const act = e.target.closest("[data-act]")?.dataset.act;
@@ -559,7 +557,7 @@
     $("#drawer").addEventListener("drawerclose", () => {
       if (L.openId === null) return;
       L.openId = null;
-      $$(".lib-row.selected").forEach((x) => x.classList.remove("selected"));
+      $$(".lib-tile.selected").forEach((x) => x.classList.remove("selected"));
     });
   });
 })();

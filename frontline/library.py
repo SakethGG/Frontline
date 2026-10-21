@@ -1,5 +1,5 @@
-"""Paper library: the PDFs in a folder you choose (e.g. inside Google Drive for desktop, Dropbox
-or OneDrive), indexed and tagged against your interests.
+"""Paper library: the PDFs in a folder you choose (any local folder, or one inside Google Drive for
+desktop, Dropbox or OneDrive if you want it synced), indexed and tagged against your interests.
 
 The folder is the source of truth: sub-folders are collections, files you drop in show up on the
 next scan, and moving or renaming a file keeps its notes (files are matched by content hash).
@@ -14,6 +14,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import httpx
@@ -67,9 +68,9 @@ def interests() -> list[str]:
 
 
 def drive_suggestions() -> list[str]:
-    """Likely cloud-synced folders on this machine, each with a 'Research Papers' folder inside."""
+    """A 'Research Papers' folder in Documents, then in any cloud-synced folders on this machine."""
     home = Path.home()
-    found: list[Path] = []
+    found: list[Path] = [home / "Documents" if (home / "Documents").is_dir() else home]
     cloud = home / "Library" / "CloudStorage"  # macOS: Google Drive, Dropbox, OneDrive, Box
     if cloud.is_dir():
         for p in sorted(cloud.iterdir()):
@@ -555,6 +556,68 @@ def pdf_file(pid: int):
     if not path.is_file():
         raise HTTPException(404, "The PDF isn't in the library folder any more")
     return FileResponse(path, media_type="application/pdf", filename=path.name, content_disposition_type="inline")
+
+
+THUMBS = config.DB_PATH.parent / "thumbs"   # each paper's first figure, cached by file content
+THUMB_WIDTH = 480
+FIGURE_PAGES = 6                             # figures past the first few pages rarely stand for the paper
+
+
+def _first_figure(src: Path, dest: Path) -> bool:
+    """Save the first real image embedded in the PDF (skipping logos, icons and rules); False if none."""
+    from PIL import Image
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(src))
+    for page in reader.pages[:FIGURE_PAGES]:
+        try:
+            images = list(page.images)
+        except Exception:  # broken image dictionaries are common; try the next page
+            continue
+        for f in images:
+            try:
+                img = f.image
+            except Exception:
+                continue
+            w, h = img.size
+            if w < 150 or h < 100 or not 0.25 <= w / h <= 4:
+                continue
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGBA")
+                bg = Image.new("RGB", img.size, "white")
+                bg.paste(img, mask=img.getchannel("A"))
+                img = bg
+            img = img.convert("RGB")
+            img.thumbnail((THUMB_WIDTH, THUMB_WIDTH * 2))
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_name(f"{dest.stem}.{threading.get_ident()}.tmp")
+            img.save(tmp, "JPEG", quality=85)
+            tmp.replace(dest)
+            return True
+    return False
+
+
+@router.get("/{pid}/thumb")
+async def thumb(pid: int):
+    r = _get(pid)
+    src = _abs(_require_root(), r["rel_path"])
+    if not src.is_file():
+        raise HTTPException(404, "The PDF isn't in the library folder any more")
+    key = r["file_hash"] or hashlib.sha1(f"{r['rel_path']}:{src.stat().st_size}".encode()).hexdigest()
+    dest, none = THUMBS / f"{key}.fig.jpg", THUMBS / f"{key}.none"
+    if not dest.is_file():
+        found = False
+        if not none.is_file():
+            try:
+                found = await asyncio.to_thread(_first_figure, src, dest)
+            except Exception as e:  # unreadable or encrypted PDFs just get the plain tile
+                log.info("No figure for %s: %s", r["rel_path"], e)
+            if not found:  # remember, so the PDF isn't re-read on every visit
+                THUMBS.mkdir(parents=True, exist_ok=True)
+                none.touch()
+        if not found:
+            raise HTTPException(404, "No figure in this PDF")
+    return FileResponse(dest, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 class RevealIn(BaseModel):
