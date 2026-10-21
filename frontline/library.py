@@ -94,7 +94,7 @@ def _abs(base: Path, rel: str) -> Path:
 
 
 def clean_collection(name: str) -> str:
-    """'Robotics / Control' -> 'Robotics/Control'; rejects anything that could escape the folder."""
+    """'Parent / Child' -> 'Parent/Child'; rejects anything that could escape the folder."""
     parts = [BAD_FILENAME.sub("", p).strip().strip(".") for p in re.split(r"[/\\]+", name or "")]
     parts = [p for p in parts if p]
     if any(p.startswith(".") for p in parts):
@@ -579,8 +579,6 @@ def reveal(pid: int, body: RevealIn, request: Request):
         subprocess.Popen(["open", "-R", str(path)] if body.folder else ["open", str(path)])
     else:
         subprocess.Popen(["xdg-open", str(path.parent if body.folder else path)])
-    if not body.folder and r["status"] == "unread":
-        db.update_record("library", pid, {"status": "reading"})
     return {"ok": True}
 
 

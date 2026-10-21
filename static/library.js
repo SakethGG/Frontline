@@ -1,17 +1,17 @@
 // Library: the PDFs in the user's chosen folder (e.g. inside Google Drive), tagged by interest.
-// Collections are sub-folders. Everything is filtered client-side; libraries are small enough.
+// Collections are sub-folders, browsed like a file manager: a folder shows its sub-folders and the
+// PDFs directly inside it; searching or filtering looks through everything below it.
+// Everything is filtered client-side; libraries are small enough.
 (() => {
   const L = {
     placeholder: "Search your library…",
     meta: null, items: [], q: "",
-    view: pref("lib.view") || "all", sort: pref("lib.sort") || "relevance",
-    collection: null,  // null = everything, "" = unfiled, "__missing" = files that vanished
+    view: pref("lib.view") === "starred" ? "starred" : "all", sort: pref("lib.sort") || "relevance",
+    collection: null,  // null = the library folder itself, "__missing" = files that vanished
     interest: null, openId: null, polling: null, lastScan: 0,
   };
   const chats = new Map(), dives = new Map();
   Sections.library = L;
-  const STATUS_LABEL = { unread: "To read", reading: "Reading", read: "Read" };
-  const NEXT_STATUS = { unread: "reading", reading: "read", read: "unread" };
 
   // ---------------------------------------------------------------- loading
 
@@ -102,29 +102,38 @@
 
   // ---------------------------------------------------------------- filtering
 
-  const inCollection = (r) => L.collection === null || (L.collection === "" ? r.collection === "" :
-    r.collection === L.collection || r.collection.startsWith(L.collection + "/"));
+  const inCollection = (r) => L.collection === null || r.collection === L.collection || r.collection.startsWith(L.collection + "/");
+  const parentOf = (c) => c.includes("/") ? c.slice(0, c.lastIndexOf("/")) : "";
+  // plain folder browsing: no search, interest or starred filter narrowing things down
+  const browsing = () => L.collection !== "__missing" && !L.q && !L.interest && L.view === "all";
 
   function haystack(r) {
     return (r._h ??= [r.title, r.authors.join(" "), r.abstract, r.tldr, r.notes, r.tags.join(" "), r.venue, r.filename, r.year]
       .join(" ").toLowerCase());
   }
 
-  function scoped() {  // collection + interest + search, before the status tab
+  function scoped() {  // collection (whole subtree) + interest + search, before the starred tab
     const q = L.q.toLowerCase();
     return L.items.filter((r) => (L.collection === "__missing" ? r.missing : !r.missing && inCollection(r))
       && (!L.interest || r.tags.includes(L.interest)) && (!q || haystack(r).includes(q)));
   }
 
+  function subfolders() {
+    if (!browsing()) return [];
+    const here = L.collection || "";
+    return L.meta.collections.filter((c) => parentOf(c) === here).sort((a, b) => a.localeCompare(b));
+  }
+
   const SORTS = {
-    relevance: (a, b) => b.relevance - a.relevance || (b.status === "reading") - (a.status === "reading") || b.added_at.localeCompare(a.added_at),
+    relevance: (a, b) => b.relevance - a.relevance || b.added_at.localeCompare(a.added_at),
     added: (a, b) => b.added_at.localeCompare(a.added_at),
     year: (a, b) => (b.year || "").localeCompare(a.year || "") || b.added_at.localeCompare(a.added_at),
     title: (a, b) => a.title.localeCompare(b.title),
   };
 
   function visible() {
-    const xs = scoped().filter((r) => L.view === "all" || (L.view === "starred" ? r.starred : r.status === L.view));
+    const here = L.collection || "";
+    const xs = browsing() ? scoped().filter((r) => r.collection === here) : scoped().filter((r) => L.view === "all" || r.starred);
     return xs.sort(SORTS[L.sort] || SORTS.relevance);
   }
 
@@ -134,21 +143,21 @@
     renderSide();
     renderInterests();
     const sc = scoped();
-    const count = { all: sc.length, unread: 0, reading: 0, read: 0, starred: 0 };
-    sc.forEach((r) => { count[r.status]++; if (r.starred) count.starred++; });
+    const count = { all: sc.length, starred: sc.filter((r) => r.starred).length };
     $$("#libTabs .tab").forEach((t) => {
       t.classList.toggle("active", t.dataset.lview === L.view);
       $("[data-count]", t).textContent = count[t.dataset.lview] || "";
     });
     $("#libSort").value = L.sort;
-    const xs = visible();
-    $("#libList").innerHTML = xs.map(rowHTML).join("");
+    const xs = visible(), dirs = subfolders();
+    $("#libList").innerHTML = dirs.map(folderHTML).join("") + xs.map(rowHTML).join("");
     renderStatusLine(xs.length);
     const empty = $("#libEmpty");
-    empty.hidden = xs.length > 0;
-    if (!xs.length) {
+    empty.hidden = xs.length + dirs.length > 0;
+    if (!xs.length && !dirs.length) {
       empty.innerHTML = !L.items.some((r) => !r.missing) && L.collection !== "__missing"
         ? `<h3>Your library is empty</h3><p>Drop PDFs here, use <b>+ Add PDFs</b>, put files into <b>${esc(L.meta.root)}</b>, or press <b>⤓ Save to library</b> on any Radar paper.</p>`
+        : browsing() ? `<h3>This folder is empty</h3><p>Drop PDFs here or use <b>+ Add PDFs</b> to put papers in <b>${esc(L.collection)}</b>.</p>`
         : `<h3>Nothing here</h3><p>No papers match these filters.</p><button class="primary-btn" data-lib-clear>Clear filters</button>`;
     }
   }
@@ -158,8 +167,15 @@
     const bits = [];
     if (L.interest) bits.push(`tagged “${esc(L.interest)}” <button class="text-btn" data-lib-unset="interest">clear</button>`);
     if (L.q) bits.push(`matching “${esc(L.q)}” <button class="text-btn" data-lib-unset="q">clear</button>`);
-    $("#libStatus").innerHTML = (L.items.length ? `${plural(n, "paper")}${bits.length ? " · " + bits.join(" · ") : ""}` : "") +
+    $("#libStatus").innerHTML = crumbsHTML() + (L.items.length ? `${plural(n, "paper")}${bits.length ? " · " + bits.join(" · ") : ""}` : "") +
       (L.scanText ? `<span class="scan-line"><span class="loading">${esc(L.scanText)}</span></span>` : "");
+  }
+
+  function crumbsHTML() {  // Library › Parent › Child, each part opens that folder
+    if (L.collection === null || L.collection === "__missing") return "";
+    const parts = L.collection.split("/");
+    return `<span class="crumbs"><button class="text-btn" data-coll="\u0000">Library</button>${parts.map((p, i) => i === parts.length - 1
+      ? ` › <span>${esc(p)}</span>` : ` › <button class="text-btn" data-coll="${esc(parts.slice(0, i + 1).join("/"))}">${esc(p)}</button>`).join("")}</span>`;
   }
 
   function renderSide() {
@@ -173,8 +189,7 @@
         ${count ? `<span class="count">${count}</span>` : ""}
       </button>`;
     $("#libCollections").innerHTML =
-      row(null, "All papers", live.length) +
-      (live.some((r) => r.collection === "") && L.meta.collections.length ? row("", "Unfiled", live.filter((r) => r.collection === "").length) : "") +
+      row(null, "Library", live.length) +
       L.meta.collections.map((c) => row(c, c.split("/").pop(), n(c), c.split("/").length - 1)).join("") +
       (missing ? row("__missing", "Missing files", missing) : "") +
       `<button class="person-row add" id="libNewColl">+ New collection</button>`;
@@ -195,26 +210,40 @@
     return a.length > 3 ? `${a.slice(0, 2).join(", ")} … ${a[a.length - 1]}` : a.join(", ");
   }
 
+  function folderHTML(c) {
+    const n = L.items.filter((r) => !r.missing && (r.collection === c || r.collection.startsWith(c + "/"))).length;
+    return `
+    <article class="lib-row folder" data-coll="${esc(c)}" title="Open folder">
+      <span class="coll-icon" aria-hidden="true">📁</span>
+      <div class="lr-main"><h3>${esc(c.split("/").pop())}</h3></div>
+      <div class="lr-side"><span class="lr-meta">${plural(n, "paper")}</span></div>
+    </article>`;
+  }
+
   function rowHTML(r) {
     const meta = [shortAuthors(r.authors), r.year, r.venue].filter(Boolean).map(esc).join(" · ");
     return `
-    <article class="lib-row ${r.status} ${r.id === L.openId ? "selected" : ""}" data-id="${r.id}">
+    <article class="lib-row ${r.id === L.openId ? "selected" : ""}" data-id="${r.id}" title="${r.missing ? "" : "Open PDF"}">
       <button class="star-btn ${r.starred ? "on" : ""}" data-act="star" title="${r.starred ? "Unstar" : "Star"}" aria-label="Star">${r.starred ? "★" : "☆"}</button>
       <div class="lr-main">
         <h3>${esc(r.title)}</h3>
-        <div class="lr-meta">${meta || esc(r.filename)}${r.collection && L.collection === null ? ` · <span class="coll-tag">📁 ${esc(r.collection)}</span>` : ""}</div>
+        <div class="lr-meta">${meta || esc(r.filename)}${r.collection && r.collection !== (L.collection || "") ? ` · <span class="coll-tag">📁 ${esc(r.collection)}</span>` : ""}</div>
         ${r.tldr ? `<p class="lr-tldr">${esc(r.tldr)}</p>` : ""}
         ${r.tags.length ? `<div class="tags">${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
       </div>
       <div class="lr-side">
         ${!r.tagged_by ? `<span class="score lo" title="Not tagged yet">…</span>` : r.relevance || r.tagged_by === "ai" ? `<span class="score ${scoreClass(r.relevance)}" title="Match with your interests">${r.relevance}/10</span>` : ""}
-        <button class="pill ${r.status}" data-act="status" title="Click to change">${STATUS_LABEL[r.status]}</button>
-        ${r.missing ? `<span class="pill missing" title="The file is no longer in the folder">missing</span>` : `<a class="act" href="/api/library/${r.id}/file" target="_blank" rel="noopener" data-act="pdf">PDF ↗</a>`}
+        ${r.missing ? `<span class="pill missing" title="The file is no longer in the folder">missing</span>` : ""}
+        <button class="act" data-act="info" title="Notes, abstract, deep dive and Q&A">Details</button>
       </div>
     </article>`;
   }
 
   // ---------------------------------------------------------------- actions
+
+  async function openFile(r, folder = false) {  // in the system PDF app / file manager, like double-clicking it
+    try { await api(`/api/library/${r.id}/reveal`, { method: "POST", body: { folder } }); } catch (err) { toast(err.message); }
+  }
 
   async function patch(r, body) {
     const notes = L.openId === r.id ? $("#libNotes")?.value : undefined;  // don't lose unsaved typing on re-render
@@ -247,7 +276,7 @@
   }
 
   async function newCollection() {
-    const name = prompt("New collection (a sub-folder in your library). Use / for nesting, e.g. Robotics/Control:");
+    const name = prompt("New collection (a sub-folder in your library). Use / for nesting, e.g. Parent/Child:");
     if (!name?.trim()) return;
     try {
       const { collections } = await api("/api/library/collections", { method: "POST", body: { name } });
@@ -319,8 +348,6 @@
         </div>
       </div>
       <div class="lib-controls">
-        <div class="seg" role="group" aria-label="Reading status">${Object.entries(STATUS_LABEL).map(([k, v]) =>
-          `<button data-status="${k}" class="${r.status === k ? "on" : ""}">${v}</button>`).join("")}</div>
         <label class="inline">Collection
           <select data-d="collection" ${r.missing ? "disabled" : ""}>${colls.map((c) => `<option value="${esc(c)}" ${c === r.collection ? "selected" : ""}>${c ? esc(c) : "(unfiled)"}</option>`).join("")}</select>
         </label>
@@ -406,8 +433,6 @@
     const r = L.items.find((x) => x.id === L.openId);
     if (!r) return;
     const d = e.target.closest("[data-d]")?.dataset.d;
-    const st = e.target.closest("[data-status]")?.dataset.status;
-    if (st) return patch(r, { status: st });
     const tab = e.target.closest("[data-tab]")?.dataset.tab;
     if (tab) {
       L.tab = tab;
@@ -421,9 +446,7 @@
     switch (d) {
       case "close": return closeDrawer();
       case "star": return patch(r, { starred: !r.starred });
-      case "open-app": case "reveal":
-        try { await api(`/api/library/${r.id}/reveal`, { method: "POST", body: { folder: d === "reveal" } }); } catch (err) { toast(err.message); }
-        return;
+      case "open-app": case "reveal": return openFile(r, d === "reveal");
       case "cite":
         await navigator.clipboard.writeText(bibtex({ ...r, published: r.year, url: r.url || "" }));
         return toast("BibTeX copied");
@@ -470,14 +493,15 @@
       if (e.target.closest("[data-lib-clear]")) { Object.assign(L, { q: "", interest: null, collection: null, view: "all" }); $("#search").value = ""; return render(); }
       const tab = e.target.closest("[data-lview]")?.dataset.lview;
       if (tab) { L.view = pref("lib.view", tab); return render(); }
+      const coll = e.target.closest("[data-coll]")?.dataset.coll;
+      if (coll !== undefined) { L.collection = coll === "\u0000" ? null : coll; return render(); }
       const row = e.target.closest(".lib-row");
       if (!row) return;
       const r = L.items.find((x) => x.id === +row.dataset.id);
       const act = e.target.closest("[data-act]")?.dataset.act;
-      if (act === "pdf") return;  // the link opens the PDF
       if (act === "star") return patch(r, { starred: !r.starred });
-      if (act === "status") return patch(r, { status: NEXT_STATUS[r.status] });
-      L.open(r.id);
+      if (act === "info" || r.missing) return L.open(r.id);
+      openFile(r);
     });
     page.addEventListener("submit", (e) => {
       if (e.target.id !== "libDirForm") return;

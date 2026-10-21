@@ -409,7 +409,10 @@ function renderEmpty() {
   el.hidden = state.items.length > 0;
   if (state.items.length) return;
   const anyPapers = state.topics.some((t) => t.paper_count);
-  if (!anyPapers) {
+  if (!state.topics.length) {
+    el.innerHTML = `<h3>Nothing to follow yet</h3><p>Add a research topic or follow a researcher, then sweep for the latest papers.</p>
+      <button class="primary-btn" data-empty="topic">+ Add a topic</button>`;
+  } else if (!anyPapers) {
     el.innerHTML = `<h3>No papers yet</h3><p>Sweep arXiv, Semantic Scholar and OpenAlex for the latest work in your topics.</p>
       <button class="primary-btn" data-empty="sweep">⟳ Sweep now</button>`;
   } else if (state.q || state.subtopic || state.sweepId) {
@@ -546,7 +549,7 @@ async function loadDive(refresh) {
   } catch (e) { $("#rDive").innerHTML = `<p>Couldn't generate the deep dive: ${esc(e.message)}</p>`; }
 }
 
-const SUGGESTIONS = ["What's the key idea in plain words?", "What robot / setup did they use?", "How does it compare to prior work?", "What are the main limitations?"];
+const SUGGESTIONS = ["What's the key idea in plain words?", "What setup did they use?", "How does it compare to prior work?", "What are the main limitations?"];
 
 function renderChat(pending) {
   const p = state.items[state.readerIdx];
@@ -891,6 +894,7 @@ function bind() {
   $("#empty").onclick = (e) => {
     const a = e.target.closest("[data-empty]")?.dataset.empty;
     if (a === "sweep") startSweep();
+    if (a === "topic") openTopicEditor(null);
     if (a === "all") go({ view: "all" });
     if (a === "clear") { $("#search").value = ""; go({ q: "", subtopic: null, sweepId: null }); }
   };

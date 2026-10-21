@@ -68,7 +68,7 @@ def _profile(a: dict) -> dict:
 async def _paper_keywords(c: httpx.AsyncClient, openalex_ids: list[str]) -> dict[str, dict]:
     """Per author: the keywords most common on their papers from the last three years, and
     their latest paper. OpenAlex's topic labels are too coarse to tell researchers in one field
-    apart (every legged-robotics lab gets the same three); paper keywords aren't. One request
+    apart (every lab in a field gets the same three); paper keywords aren't. One request
     covers every author."""
     ids = [i for i in openalex_ids if i]
     if not ids:

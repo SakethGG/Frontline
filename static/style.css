@@ -642,7 +642,6 @@ button.chip.static { cursor: pointer; }
   border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow-sm); transition: transform .08s, box-shadow .08s;
 }
 .lib-row:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow); }
-.lib-row.read { background: var(--surface-2); }
 .lib-row.selected { outline: var(--bw) solid var(--ink); outline-offset: 3px; box-shadow: 5px 5px 0 var(--accent-2); }
 .star-btn { flex: none; border: 0; background: none; font-size: 19px; line-height: 1; cursor: pointer; color: var(--muted); padding: 2px; }
 .star-btn.on { color: var(--star); }
@@ -654,6 +653,11 @@ button.chip.static { cursor: pointer; }
 .lib-row .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .lr-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .lr-side .act { border-color: var(--ink); padding: 1px 8px; font-size: 12.5px; }
+.lib-row.folder { align-items: center; }
+.lib-row.folder .coll-icon { font-size: 19px; width: 23px; }
+.lib-row.folder h3 { margin: 0; }
+.crumbs { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-right: 10px; font-weight: 700; }
+.crumbs .text-btn { font-weight: 700; }
 .scan-line { margin-left: 12px; }
 .feed-status .loading { display: inline-flex; }
 .dropzone {

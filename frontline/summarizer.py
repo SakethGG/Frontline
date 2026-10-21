@@ -30,7 +30,7 @@ PAPER_TYPES = ["method", "system", "benchmark/dataset", "survey", "theory", "har
 
 CARD_SYSTEM = """You are a sharp research analyst helping a researcher stay on top of new papers in their field. \
 For each paper you produce a compact briefing card. Be concrete and specific: name the actual technique, \
-robot/platform, benchmark and numbers when the abstract gives them. Never invent results that are not \
+platform/dataset, benchmark and numbers when the abstract gives them. Never invent results that are not \
 in the provided text. If the abstract is missing or thin, say so briefly instead of guessing.
 
 Relevance scoring (0-10) is about how useful the paper is to someone following the stated research topic:

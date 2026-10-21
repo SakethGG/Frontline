@@ -63,34 +63,5 @@ PUBLIC_URL = (os.getenv("PUBLIC_URL") or "http://localhost:8000").rstrip("/")
 DESKTOP = os.getenv("FRONTLINE_DESKTOP") == "1"
 APP_ID = "Frontline.ResearchRadar"
 
-DEFAULT_TOPICS = [
-    {
-        "slug": "legged-robots",
-        "name": "Legged Robots",
-        "description": (
-            "Legged locomotion and loco-manipulation for quadrupeds, bipeds and humanoids: "
-            "controller design, learning-based locomotion, morphology/controller co-design, "
-            "actuation and hardware, perception for rough terrain, and sim-to-real transfer."
-        ),
-        "queries": [
-            "legged robot",
-            "quadruped",
-            "humanoid locomotion",
-            "bipedal locomotion",
-            "legged locomotion",
-            "loco-manipulation",
-        ],
-        "subtopics": [
-            "Co-design",
-            "Control (MPC / WBC)",
-            "Reinforcement Learning",
-            "Sim-to-Real",
-            "Perception & Terrain",
-            "Hardware & Actuation",
-            "Loco-manipulation",
-        ],
-        "arxiv_categories": ["cs.RO", "cs.LG", "eess.SY", "cs.AI"],
-        "lookback_days": 7,
-        "enabled": True,
-    }
-]
+# Topics seeded into a fresh database. Empty: you add your own from the UI.
+DEFAULT_TOPICS: list[dict] = []

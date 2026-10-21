@@ -96,9 +96,6 @@
       <div class="viewbar">
         <div class="tabs" role="tablist" id="libTabs">
           <button class="tab" data-lview="all">All <span class="badge" data-count="all"></span></button>
-          <button class="tab" data-lview="unread">To read <span class="badge" data-count="unread"></span></button>
-          <button class="tab" data-lview="reading">Reading <span class="badge" data-count="reading"></span></button>
-          <button class="tab" data-lview="read">Read <span class="badge" data-count="read"></span></button>
           <button class="tab" data-lview="starred">Starred <span class="badge" data-count="starred"></span></button>
         </div>
         <div class="view-controls">
@@ -303,7 +300,7 @@
       <div class="modal-head"><h2>Your interests</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
       <div class="modal-body form">
         <p class="hint">Library papers are tagged with these and sorted by how well they match. One per line: methods, problems, platforms, anything you care about.</p>
-        <label>Interests <small>one per line</small><textarea name="interests" rows="9" placeholder="Reinforcement Learning&#10;Sim-to-Real&#10;Whole-body control"></textarea></label>
+        <label>Interests <small>one per line</small><textarea name="interests" rows="9" placeholder="One interest per line"></textarea></label>
         <label class="check"><input type="checkbox" name="retag" checked> Re-tag the library now <small id="retagHint"></small></label>
         <button type="button" class="text-btn" id="interestsReset">Use my Radar topics instead</button>
       </div>
@@ -316,7 +313,7 @@
     <div class="modal-head"><h2>Conference catalog</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
     <div class="modal-body">
       <p class="hint" id="catalogHint">Community-maintained deadlines for AI, ML, vision, NLP and robotics venues.</p>
-      <div class="follow-search"><input id="catalogQ" placeholder="Search, e.g. ICRA, robot learning, NeurIPS" autocomplete="off" aria-label="Search the catalog"></div>
+      <div class="follow-search"><input id="catalogQ" placeholder="Search by venue name or field" autocomplete="off" aria-label="Search the catalog"></div>
       <div class="subtopics" id="catalogTags"></div>
       <ul class="candidates" id="catalogList"></ul>
     </div>
@@ -339,11 +336,11 @@
       <div class="modal-body form">
         <div class="row">
           <label class="narrow">Type<select name="kind"><option value="conference">Conference</option><option value="workshop">Workshop</option><option value="journal">Journal / special issue</option><option value="other">Other</option></select></label>
-          <label>Short name<input name="name" required placeholder="e.g. CoRL, or LocoLearn Workshop"></label>
+          <label>Short name<input name="name" required placeholder="Conference or workshop acronym"></label>
           <label class="narrow">Year<input name="year" type="number" min="2000" max="2100"></label>
         </div>
-        <label>Full name<input name="full_name" placeholder="Conference on Robot Learning"></label>
-        <label data-only="workshop">Held at <small>the main conference, for a workshop</small><input name="parent" placeholder="e.g. CoRL 2026"></label>
+        <label>Full name<input name="full_name" placeholder="Full conference name"></label>
+        <label data-only="workshop">Held at <small>the main conference, for a workshop</small><input name="parent" placeholder="Main conference name"></label>
         <div class="row">
           <label>Website<input name="url" type="url" placeholder="https://"></label>
           <label>Location<input name="location" placeholder="City, Country"></label>
@@ -357,7 +354,7 @@
           <div id="cmDeadlines"></div>
           <button type="button" class="ghost-btn" id="cmAddDeadline">+ Deadline</button>
         </fieldset>
-        <label>Tags <small>comma separated</small><input name="tags" placeholder="robotics, machine-learning"></label>
+        <label>Tags <small>comma separated</small><input name="tags" placeholder="Comma-separated fields"></label>
         <label>Notes<textarea name="notes" rows="3" placeholder="Page limit, submission site, who's co-authoring…"></textarea></label>
       </div>
       <div class="modal-foot">
@@ -374,7 +371,7 @@
     <form method="dialog" id="projectForm">
       <div class="modal-head"><h2 id="pmTitle">New project</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
       <div class="modal-body form">
-        <label>Name<input name="name" required placeholder="e.g. Co-design paper for CoRL"></label>
+        <label>Name<input name="name" required placeholder="Project name"></label>
         <label>Description<textarea name="description" rows="3" placeholder="Goal, scope, collaborators…"></textarea></label>
         <div class="row">
           <label>Target venue <small>shows its deadline countdown</small><select name="conference_id"></select></label>
@@ -441,7 +438,7 @@
       <p class="hint">Every paper they co-author shows up here, so you see everything coming out of their lab. Pick the right person: many names are shared. Can't find them by name? Paste their Google Scholar profile link instead: their Scholar papers are used as-is, and new papers found elsewhere are only kept if they share co-authors with them.</p>
       <form class="follow-search" id="followForm">
         <input id="followName" placeholder="Name, or paste a Google Scholar profile link" autocomplete="off" aria-label="Researcher name or Google Scholar link">
-        <input id="followOrg" class="org" placeholder="Organization (optional), e.g. MIT" autocomplete="off" aria-label="Organization">
+        <input id="followOrg" class="org" placeholder="Organization (optional)" autocomplete="off" aria-label="Organization">
         <button class="primary-btn" type="submit">Search</button>
       </form>
       <ul class="candidates" id="candidates"></ul>
@@ -456,17 +453,17 @@
         <button class="icon-btn" type="button" data-close aria-label="Close">✕</button>
       </div>
       <div class="modal-body form">
-        <label>Name<input name="name" required placeholder="e.g. Legged Robots"></label>
+        <label>Name<input name="name" required placeholder="Topic name"></label>
         <label>What are you interested in? <small>The AI uses this to score relevance</small>
-          <textarea name="description" rows="3" placeholder="e.g. Learning-based control and co-design for quadrupeds and humanoids"></textarea></label>
+          <textarea name="description" rows="3" placeholder="Describe the area you want to follow"></textarea></label>
         <label>Search phrases <small>one per line</small>
-          <textarea name="queries" rows="4" required placeholder="legged robot&#10;quadruped&#10;humanoid locomotion"></textarea></label>
+          <textarea name="queries" rows="4" required placeholder="One search phrase per line"></textarea></label>
         <label>Subtopics <small>one per line, used to tag and filter cards</small>
-          <textarea name="subtopics" rows="4" placeholder="Co-design&#10;Control&#10;Reinforcement Learning"></textarea></label>
+          <textarea name="subtopics" rows="4" placeholder="One subtopic per line"></textarea></label>
         <details class="advanced">
           <summary>Advanced</summary>
           <div class="row">
-            <label>arXiv categories <small>comma separated</small><input name="arxiv_categories" placeholder="cs.RO, cs.LG"></label>
+            <label>arXiv categories <small>comma separated</small><input name="arxiv_categories" placeholder="Comma-separated arXiv categories"></label>
             <label class="narrow">Look back (days)<input name="lookback_days" type="number" min="1" max="90" value="7"></label>
           </div>
           <label class="check"><input type="checkbox" name="enabled" checked> Include in sweeps</label>
@@ -506,8 +503,8 @@
 
   <div class="toast" id="toast" hidden></div>
   <script src="/static/app.js?v=7"></script>
-  <script src="/static/home.js?v=1"></script>
-  <script src="/static/library.js?v=1"></script>
+  <script src="/static/home.js?v=2"></script>
+  <script src="/static/library.js?v=2"></script>
   <script src="/static/conferences.js?v=1"></script>
   <script src="/static/ideas.js?v=1"></script>
   <script src="/static/projects.js?v=1"></script>

@@ -1,4 +1,4 @@
-// Home: today at a glance. Deadlines, tasks, new papers, the reading queue and recent ideas.
+// Home: today at a glance. Deadlines, tasks, new papers, recent library additions and ideas.
 (() => {
   const H = { placeholder: "Search papers…" };
   Sections.home = H;
@@ -22,8 +22,7 @@
     const open = tasks.filter((t) => t.status === "todo" || t.status === "doing");
     const focus = open.filter((t) => t.status === "doing" || (t.due && t.due <= new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)) || t.priority === 2)
       .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || b.priority - a.priority).slice(0, 7);
-    const queue = lib.filter((r) => !r.missing && r.status !== "read")
-      .sort((a, b) => (b.status === "reading") - (a.status === "reading") || b.relevance - a.relevance).slice(0, 4);
+    const recent = lib.filter((r) => !r.missing).sort((a, b) => b.added_at.localeCompare(a.added_at)).slice(0, 4);
     const recentIdeas = ideas.slice(0, 4);
 
     const panel = (title, link, body, extra = "") => `
@@ -58,11 +57,10 @@
               <span><b>${esc(p.title)}</b><small>${esc(p.summary?.tldr || "")}</small></span></li>`).join("")}</ul>`
         : `<p class="hint">You're caught up. <button class="text-btn" data-sweep>⟳ Sweep now</button> to look for new papers.</p>`),
 
-      panel("Reading queue", ["library", "Library"], queue.length
-        ? `<ul class="paper-mini">${queue.map((r) => `
-            <li data-lib="${r.id}"><span class="pill ${r.status}">${r.status === "reading" ? "reading" : "to read"}</span>
-              <span><b>${esc(r.title)}</b><small>${esc([r.authors[0], r.year].filter(Boolean).join(" · "))}</small></span></li>`).join("")}</ul>`
-        : `<p class="hint">Nothing queued. Save papers from the Radar or drop PDFs into your library folder.</p>`),
+      panel("Recently added", ["library", "Library"], recent.length
+        ? `<ul class="paper-mini">${recent.map((r) => `
+            <li data-lib="${r.id}"><span><b>${esc(r.title)}</b><small>${esc([r.authors[0], r.year, r.collection && `📁 ${r.collection}`].filter(Boolean).join(" · "))}</small></span></li>`).join("")}</ul>`
+        : `<p class="hint">Your library is empty. Save papers from the Radar or drop PDFs into your library folder.</p>`),
 
       panel("Ideas", ["ideas", "Ideation center"], (recentIdeas.length
         ? `<ul class="paper-mini">${recentIdeas.map((i) => `

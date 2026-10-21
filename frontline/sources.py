@@ -455,7 +455,7 @@ def keyword_hits(topic: dict, p: dict) -> int:
     hits = 0
     for q in topic["queries"]:
         words = re.findall(r"[a-z0-9]+", q.lower())
-        # match word stems loosely so "quadruped" also catches "quadrupedal"
+        # match word stems loosely so "network" also catches "networks"
         if words and all(re.search(rf"\b{re.escape(w[:max(4, len(w) - 2)])}", text) for w in words):
             hits += 1
     return hits
