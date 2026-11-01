@@ -64,7 +64,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 
 | Section | What it does for you |
 |---|---|
-| 🏠 **Home** | Today at a glance: next deadlines, tasks due this week, the best new papers, your reading queue and recent ideas. |
+| 🏠 **Home** | Today at a glance: a focus timer, next deadlines, tasks due this week, the best new papers, your reading queue and recent ideas. |
 | 📡 **Radar** | Your feed of fresh papers, with AI summaries, scores and a sweep digest. |
 | 📚 **Library** | Your PDFs in a folder you choose (any local folder, or a synced one), tagged by your interests automatically. |
 | 🗓️ **Deadlines** | Live countdowns to your own deadlines and your venues', from a catalog of ML, vision, NLP and robotics conferences and workshops. |
@@ -211,6 +211,7 @@ Every PDF is identified from its arXiv ID or DOI when it has one, so you get the
 |---|---|
 | `h` `r` `l` `c` `i` `p` | Jump to Home / Radar / Library / Deadlines / Ideas / Projects |
 | `n` | New idea or task |
+| `f` | Start / pause the focus timer (on Home) |
 | `/` | Search the current section |
 | `?` | Show all shortcuts |
 | `j` / `k` | Next / previous paper (Radar) |

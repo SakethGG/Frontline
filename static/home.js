@@ -1,4 +1,4 @@
-// Home: today at a glance. Deadlines, tasks, new papers, recent library additions and ideas.
+// Home: today at a glance. Focus timer, deadlines, tasks, new papers, recent library additions and ideas.
 (() => {
   const H = { placeholder: "Search papers…" };
   Sections.home = H;
@@ -35,6 +35,7 @@
         ${body}${extra}
       </section>`;
 
+    $("#pomoSlot").innerHTML = Pomo.html(open);
     $("#homeGrid").innerHTML = [
       panel("Next deadlines", ["deadlines", "All deadlines"], deadlines.length
         ? `<ol class="timeline compact">${deadlines.map((d) => {
@@ -75,11 +76,16 @@
     ].join("");
   };
 
-  H.onKey = (e) => { if (e.key === "n") { e.preventDefault(); $('#homeGrid [data-add="task"] input')?.focus(); } };
+  H.onKey = (e) => {
+    if (e.key === "n") { e.preventDefault(); $('#homeGrid [data-add="task"] input')?.focus(); }
+    if (e.key === "f") { e.preventDefault(); Pomo.toggle(); }
+  };
 
   document.addEventListener("DOMContentLoaded", () => {
     const grid = $("#homeGrid");
+    $("#pomoSlot").onchange = Pomo.onChange;
     grid.onclick = async (e) => {
+      Pomo.onClick(e);
       const go = e.target.closest("[data-go]");
       if (go) { e.preventDefault(); return showSection(go.dataset.go); }
       if (e.target.closest("[data-sweep]")) return startSweep();
@@ -98,6 +104,7 @@
       const i = e.target.closest("[data-idea]");
       if (i) { showSection("ideas"); return Sections.ideas.open(+i.dataset.idea); }
     };
+    $("#pomoSlot").onclick = grid.onclick;  // the timer's "Mission done" reuses the same flow
     grid.onsubmit = async (e) => {
       e.preventDefault();
       const input = e.target.querySelector("input");

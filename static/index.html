@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=17">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -67,6 +67,10 @@
   <aside class="people" aria-label="Collections" data-for="library" hidden>
     <h2 class="people-title">Collections</h2>
     <nav class="people-list" id="libCollections"></nav>
+  </aside>
+  <aside class="people pomo-side" aria-label="Focus timer" data-for="home" hidden>
+    <h2 class="people-title">Focus timer</h2>
+    <div id="pomoSlot"></div>
   </aside>
   <aside class="people" aria-label="Projects" data-for="projects" hidden>
     <h2 class="people-title">Projects</h2>
@@ -539,6 +543,7 @@
       <dl class="keys">
         <dt><kbd>h</kbd> <kbd>r</kbd> <kbd>l</kbd> <kbd>c</kbd> <kbd>i</kbd> <kbd>p</kbd></dt><dd>Home / Radar / Library / Deadlines (c for calendar) / Ideas / Projects</dd>
         <dt><kbd>n</kbd></dt><dd>New idea or task (on Ideas / Projects)</dd>
+        <dt><kbd>f</kbd></dt><dd>Start / pause the focus timer (on Home)</dd>
         <dt><kbd>/</kbd></dt><dd>Search the current section</dd>
       </dl>
       <h3 class="keys-title">Radar</h3>
@@ -558,7 +563,8 @@
   <div class="toast" id="toast" hidden></div>
   <script src="/static/app.js?v=7"></script>
   <script src="/static/quest.js?v=1"></script>
-  <script src="/static/home.js?v=3"></script>
+  <script src="/static/pomodoro.js?v=2"></script>
+  <script src="/static/home.js?v=5"></script>
   <script src="/static/library.js?v=5"></script>
   <script src="/static/conferences.js?v=2"></script>
   <script src="/static/ideas.js?v=1"></script>
