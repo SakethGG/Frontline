@@ -453,10 +453,10 @@ kbd {
 .form label small { color: var(--muted); font-weight: 500; }
 .form label.check { flex-direction: row; align-items: center; gap: 8px; }
 .form label.check input { width: 18px; height: 18px; accent-color: var(--ink); }
-.form input:not([type=checkbox]), .form textarea {
+.form input:not([type=checkbox]):not([type=radio]), .form textarea {
   padding: 8px 10px; border-radius: 6px; border: var(--bw) solid var(--ink); background: var(--surface-2); font-weight: 500;
 }
-.form input:not([type=checkbox]):focus, .form textarea:focus { outline: none; background: var(--surface); box-shadow: var(--shadow-sm); }
+.form input:not([type=checkbox]):not([type=radio]):focus, .form textarea:focus { outline: none; background: var(--surface); box-shadow: var(--shadow-sm); }
 .form .row { display: flex; gap: 12px; }
 .form .row label { flex: 1; }
 .form .row label.narrow { flex: 0 0 130px; }
@@ -760,8 +760,8 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .dl-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 8px; margin-bottom: 8px; align-items: center; }
 .form .dl-row input, .form .dl-row select { min-width: 0; width: 100%; padding: 6px 8px; }
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
-.swatch { width: 30px; height: 30px; border-radius: 50%; border: var(--bw) solid var(--ink); cursor: pointer; display: grid; place-items: center; }
-.swatch input { appearance: none; margin: 0; width: 100%; height: 100%; border-radius: 50%; cursor: pointer; }
+.swatch, .form label.swatch { width: 30px; flex: none; margin: 0; padding: 0; height: 30px; border-radius: 50%; border: var(--bw) solid var(--ink); cursor: pointer; display: grid; place-items: center; }
+.swatch input, .form .swatch input { appearance: none; background: transparent; border: 0; padding: 0; margin: 0; width: 100%; height: 100%; border-radius: 50%; cursor: pointer; }
 .swatch:has(input:checked) { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
 .form select { padding: 8px 10px; background: var(--surface-2); font-weight: 500; }
 
