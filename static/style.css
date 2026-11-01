@@ -606,7 +606,15 @@ button.chip.static { cursor: pointer; }
 .chip.pick input { accent-color: var(--ink); margin: 0; }
 .keys-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 18px 0 10px; }
 .side-sep { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 6px 4px 0; }
-.person-row.coll { padding: 6px 10px 6px calc(10px + var(--depth, 0) * 14px); gap: 8px; }
+.person-row.coll { padding: 6px 8px 6px calc(8px + var(--depth, 0) * 12px); gap: 7px; font-size: 13px; }
+/* collection names run long, so give the library sidebar more room than the others */
+@media (min-width: 1241px) {
+  .layout:has(> aside[data-for="library"]:not([hidden])) { grid-template-columns: minmax(300px, 1fr) minmax(0, 1280px) minmax(240px, 1fr); }
+  .people[data-for="library"] { max-width: 340px; }
+}
+/* tint top-level and nested collections differently so the tree reads at a glance */
+.person-row.coll.parent:not(.active) { background: color-mix(in srgb, var(--blue) 28%, var(--surface)); }
+.person-row.coll.child:not(.active) { background: color-mix(in srgb, var(--good) 24%, var(--surface)); }
 .person-row .count { flex: none; font-size: 11.5px; font-weight: 800; opacity: .75; font-variant-numeric: tabular-nums; }
 .coll-icon { flex: none; width: 18px; text-align: center; }
 

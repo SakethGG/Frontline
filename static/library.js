@@ -183,7 +183,7 @@
     const n = (c) => live.filter((r) => r.collection === c || r.collection.startsWith(c + "/")).length;
     const missing = L.items.length - live.length;
     const row = (key, label, count, depth = 0) => `
-      <button class="person-row coll ${L.collection === key ? "active" : ""}" data-coll="${esc(key ?? "\u0000")}" style="--depth:${depth}">
+      <button class="person-row coll ${key && key !== "__missing" ? (depth ? "child" : "parent") : ""} ${L.collection === key ? "active" : ""}" data-coll="${esc(key ?? "\u0000")}" style="--depth:${depth}" title="${esc(label)}">
         <span class="coll-icon" aria-hidden="true">${key === "__missing" ? "⚠" : FOLDER}</span>
         <span class="person-main"><span class="person-name">${esc(label)}</span></span>
         ${count ? `<span class="count">${count}</span>` : ""}
