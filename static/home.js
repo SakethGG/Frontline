@@ -74,7 +74,18 @@
         : `<p class="hint">Your ideas, proposals and roadmaps live here.</p>`) +
         `<form class="mini-add" data-add="idea"><input placeholder="Capture an idea… (Enter)" aria-label="Quick idea"></form>`),
     ].join("");
+    pack();
   };
+
+  // Pack the panels like masonry: each spans as many 1px grid rows as it is tall (+ the 22px gap),
+  // so a short panel no longer leaves a hole next to a tall neighbour. Re-runs whenever a panel resizes.
+  const GAP = 22;
+  const fit = (el) => { el.style.gridRowEnd = `span ${Math.ceil(el.offsetHeight + GAP)}`; };
+  const sizes = new ResizeObserver((entries) => entries.forEach((e) => fit(e.target)));
+  function pack() {
+    sizes.disconnect();
+    for (const el of $("#homeGrid").children) { fit(el); sizes.observe(el); }
+  }
 
   H.onKey = (e) => {
     if (e.key === "n") { e.preventDefault(); $('#homeGrid [data-add="task"] input')?.focus(); }

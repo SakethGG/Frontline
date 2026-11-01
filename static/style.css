@@ -619,7 +619,8 @@ button.chip.static { cursor: pointer; }
 .coll-icon { flex: none; width: 18px; text-align: center; }
 
 /* ---------- home ---------- */
-.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr)); gap: 22px; align-items: start; }
+/* masonry: 1px rows, and each panel spans its own height + the gap (set in home.js), so panels stack without holes */
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr)); grid-auto-rows: 1px; column-gap: 22px; align-items: start; }
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .timeline li { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 2px solid var(--ink); border-radius: 6px; background: var(--surface); }
 .timeline li.urgent { background: color-mix(in srgb, var(--urgent) 14%, var(--surface)); }
