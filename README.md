@@ -69,7 +69,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 | 📚 **Library** | Your PDFs in a folder you choose (any local folder, or a synced one), tagged by your interests automatically. |
 | 🗓️ **Deadlines** | Live countdowns to your own deadlines and your venues', from a catalog of ML, vision, NLP and robotics conferences and workshops. |
 | 💡 **Ideas** | Capture ideas, grow them into proposals and roadmaps, and pressure-test them with AI. |
-| ✅ **Projects** | A to-do board and backlog for each project, counting down to its target venue. |
+| ✅ **Projects** | A mission board (tasks earn XP, levels, streaks and badges) and backlog for each project, counting down to its target venue. |
 
 ---
 
@@ -196,7 +196,8 @@ Every PDF is identified from its arXiv ID or DOI when it has one, so you get the
 <details>
 <summary><b>✅ Projects</b></summary>
 
-- **To-do board:** To do / In progress / Done, with drag and drop, due dates (overdue ones are flagged) and priorities.
+- **Mission board:** Missions / In action / Completed, with drag and drop, due dates (overdue ones are flagged) and priorities.
+- **Missions & XP:** every task is a mission worth XP (Easy 10, Standard 20, Boss 40, plus 10 for finishing by its due date). XP levels you up through ranks from Recruit to Legend. A daily goal (adjust it with − / +) pays a 30 XP bonus, a streak counts the days in a row you finish something, and badges unlock as you go. Finishing a mission pops confetti. Everything is worked out from your tasks, so un-ticking or deleting a finished task takes its XP back.
 - **Future tab:** for things you'll do later, so the board stays focused.
 - **Target venue:** a project can point at a tracked conference, and its header counts down to the next deadline.
 - **Inbox:** collects tasks with no project. **All tasks** shows everything.

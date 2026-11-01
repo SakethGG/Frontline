@@ -9,7 +9,7 @@
   };
   Sections.projects = P;
   const COLORS = ["#ff8b7b", "#fff27a", "#8fe3a4", "#7cc4ff", "#c9a7ff", "#ffb86b", "#5ee6d0", "#f78fb3"];
-  const COLS = [["todo", "To do"], ["doing", "In progress"], ["done", "Done"]];
+  const COLS = [["todo", "Missions"], ["doing", "In action"], ["done", "Completed"]];
 
   P.show = async () => {
     [P.projects, P.tasks, P.conferences, P.ideas] = await Promise.all([
@@ -40,6 +40,7 @@
   // ---------------------------------------------------------------- rendering
 
   function render() {
+    $("#questHud").innerHTML = Quest.hud(P.tasks);
     renderSide();
     renderHead();
     $$("#projTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.pview === P.view));
@@ -49,7 +50,7 @@
     const sel = $("#taskProj");
     sel.hidden = typeof P.sel === "number";
     sel.innerHTML = `<option value="">Inbox</option>` + P.projects.filter((p) => p.status !== "done").map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
-    $("#taskTitle").placeholder = P.view === "future" ? "Add a future task: something for later… (Enter)" : "Add a task… (Enter)";
+    $("#taskTitle").placeholder = P.view === "future" ? "Add a future task: something for later… (Enter)" : "Add a mission… (Enter)";
     if (P.view === "todo") renderBoard(scoped.filter(matches));
     else renderFuture(scoped.filter(matches));
   }
@@ -115,6 +116,7 @@
         <div class="tc-title">${t.priority === 2 ? `<span class="prio" title="High priority">‼</span> ` : ""}${esc(t.title)}</div>
         ${t.notes ? `<div class="tc-notes">${esc(t.notes.slice(0, 140))}</div>` : ""}
         <div class="tc-meta">
+          ${Quest.chip(t)}
           ${di && t.status !== "done" ? `<span class="due ${di.cls}">${di.text}</span>` : ""}
           ${p ? `<span class="tag" style="border-left:6px solid ${p.color || "var(--ink)"}">${esc(p.name)}</span>` : ""}
           ${t.status === "done" && t.done_at ? `<span class="meta">done ${timeAgo(t.done_at)}</span>` : ""}
@@ -138,7 +140,7 @@
       return `<section class="board-col" data-drop-status="${k}">
         <h3>${label} <span class="badge">${xs.filter((t) => t.status === k).length || ""}</span></h3>
         <div class="board-cards">${col.map((t) => taskCard(t, showProject)).join("") ||
-          `<p class="hint col-empty">${k === "todo" ? "Nothing to do. Add a task above." : k === "doing" ? "Drag a task here when you start it." : "Finished tasks land here."}</p>`}
+          `<p class="hint col-empty">${k === "todo" ? "No missions queued. Add one above." : k === "doing" ? "Drag a mission here when you start it." : "Completed missions land here. Go earn some XP!"}</p>`}
           ${hidden ? `<button class="text-btn" data-show-done>Show ${hidden} more</button>` : ""}</div>
       </section>`;
     }).join("");
@@ -169,9 +171,12 @@
 
   // ---------------------------------------------------------------- tasks
 
-  async function patchTask(id, body) {
+  // `at` = where to burst the confetti if this completes a mission
+  async function patchTask(id, body, at) {
+    const before = Quest.stats(P.tasks);
     await api(`/api/tasks/${id}`, { method: "PATCH", body });
     await reload();
+    Quest.celebrate(before, Quest.stats(P.tasks), at);
   }
 
   function openTask(t) {
@@ -268,6 +273,10 @@
       const idea = e.target.closest("[data-goto-idea]");
       if (idea) { showSection("ideas"); Sections.ideas.open(+idea.dataset.gotoIdea); }
     };
+    $("#questHud").onclick = (e) => {
+      const b = e.target.closest("[data-goal]");
+      if (b) { Quest.adjustGoal(+b.dataset.goal); render(); }
+    };
     $("#projTabs").onclick = (e) => { const b = e.target.closest("[data-pview]"); if (b) { P.view = b.dataset.pview; render(); } };
     $("#taskAdd").onsubmit = async (e) => {
       e.preventDefault();
@@ -294,7 +303,7 @@
       if (!el) return;
       const t = P.tasks.find((x) => x.id === +el.dataset.tid);
       const act = e.target.closest("[data-tact]")?.dataset.tact;
-      if (act === "toggle") return patchTask(t.id, { status: t.status === "done" ? "todo" : "done" });
+      if (act === "toggle") return patchTask(t.id, { status: t.status === "done" ? "todo" : "done" }, Quest.spot(e.target));
       if (act === "start") return patchTask(t.id, { status: "doing" });
       if (act === "later") { toast("Moved to Future"); return patchTask(t.id, { status: "future" }); }
       if (act === "now") { toast("Moved to To-do"); return patchTask(t.id, { status: "todo" }); }
@@ -322,7 +331,7 @@
       if (!col || !id) return;
       e.preventDefault();
       const t = P.tasks.find((x) => x.id === id);
-      if (t && t.status !== col.dataset.dropStatus) await patchTask(id, { status: col.dataset.dropStatus });
+      if (t && t.status !== col.dataset.dropStatus) await patchTask(id, { status: col.dataset.dropStatus }, { x: e.clientX, y: e.clientY });
     });
 
     $("#taskForm").onsubmit = saveTask;

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=14">
+  <link rel="stylesheet" href="/static/style.css?v=15">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -182,15 +182,16 @@
   <!-- Projects: to-do board + future tasks -->
   <main class="page" data-section="projects" hidden>
     <div class="section-head" id="projHead"></div>
+    <div id="questHud"></div>
     <div class="viewbar">
       <div class="tabs" id="projTabs">
-        <button class="tab active" data-pview="todo">To-do <span class="badge" id="projCountTodo"></span></button>
+        <button class="tab active" data-pview="todo">Missions <span class="badge" id="projCountTodo"></span></button>
         <button class="tab" data-pview="future">Future <span class="badge" id="projCountFuture"></span></button>
       </div>
       <form class="task-add" id="taskAdd">
-        <input id="taskTitle" placeholder="Add a task… (Enter)" autocomplete="off" aria-label="New task">
+        <input id="taskTitle" placeholder="Add a mission… (Enter)" autocomplete="off" aria-label="New mission">
         <input type="date" id="taskDue" aria-label="Due date" title="Due date">
-        <select id="taskPrio" aria-label="Priority"><option value="1">Normal</option><option value="2">High</option><option value="0">Low</option></select>
+        <select id="taskPrio" aria-label="Priority"><option value="1">Standard · 20 XP</option><option value="2">Boss · 40 XP</option><option value="0">Easy · 10 XP</option></select>
         <select id="taskProj" aria-label="Project"></select>
         <button class="primary-btn" type="submit">Add</button>
       </form>
@@ -556,10 +557,11 @@
 
   <div class="toast" id="toast" hidden></div>
   <script src="/static/app.js?v=7"></script>
-  <script src="/static/home.js?v=2"></script>
+  <script src="/static/quest.js?v=1"></script>
+  <script src="/static/home.js?v=3"></script>
   <script src="/static/library.js?v=5"></script>
   <script src="/static/conferences.js?v=2"></script>
   <script src="/static/ideas.js?v=1"></script>
-  <script src="/static/projects.js?v=1"></script>
+  <script src="/static/projects.js?v=2"></script>
 </body>
 </html>

@@ -13,6 +13,7 @@
       get("/api/papers?unread=true&min_relevance=5&sort=relevance&limit=4", { items: [], total: 0 }),
       get("/api/library", []), get("/api/ideas", []),
     ]);
+    H.tasks = tasks;
     if (state.section !== "home") return;
     const pname = Object.fromEntries(projects.map((p) => [p.id, p]));
     const now = new Date().toISOString();
@@ -43,16 +44,16 @@
           }).join("")}</ol>`
         : `<p class="hint">No upcoming deadlines. <button class="text-btn" data-go="deadlines">Add one or track a conference</button> to see its countdown here.</p>`),
 
-      panel("Focus this week", ["projects", "All tasks"], (focus.length
+      panel("Today's missions", ["projects", "Mission board"], Quest.hud(tasks, { compact: true }) + (focus.length
         ? `<ul class="task-mini">${focus.map((t) => {
             const di = dueInfo(t.due);
             return `<li><input type="checkbox" data-done="${t.id}" aria-label="Mark done">
               <span class="tm-title">${t.status === "doing" ? `<span class="pill doing">doing</span> ` : ""}${esc(t.title)}
               ${t.project_id && pname[t.project_id] ? `<small>${esc(pname[t.project_id].name)}</small>` : ""}</span>
-              ${di ? `<span class="due ${di.cls}">${di.text}</span>` : ""}</li>`;
+              ${Quest.chip(t)}${di ? `<span class="due ${di.cls}">${di.text}</span>` : ""}</li>`;
           }).join("")}</ul>`
-        : `<p class="hint">${open.length ? `Nothing urgent. ${plural(open.length, "open task")} in your projects.` : "No open tasks."}</p>`) +
-        `<form class="mini-add" data-add="task"><input placeholder="Quick task… (Enter)" aria-label="Quick task"></form>`),
+        : `<p class="hint">${open.length ? `Nothing urgent. ${plural(open.length, "open mission")} on your board.` : "No missions queued. Add one below and earn some XP."}</p>`) +
+        `<form class="mini-add" data-add="task"><input placeholder="Quick mission… (Enter)" aria-label="Quick mission"></form>`),
 
       panel("New on the radar", ["radar", papers.total ? `${papers.total} new` : "Radar"], papers.items.length
         ? `<ul class="paper-mini">${papers.items.map((p) => `
@@ -84,9 +85,11 @@
       if (e.target.closest("[data-sweep]")) return startSweep();
       const done = e.target.closest("[data-done]");
       if (done) {
+        const at = Quest.spot(done);
+        const before = Quest.stats(H.tasks || []);
         await api(`/api/tasks/${done.dataset.done}`, { method: "PATCH", body: { status: "done" } });
-        toast("Done ✓");
-        return H.show();
+        await H.show();
+        return Quest.celebrate(before, Quest.stats(H.tasks || []), at);
       }
       const r = e.target.closest("[data-radar]");
       if (r) return openRadarPaper(+r.dataset.radar);
@@ -102,7 +105,7 @@
       if (!title) return;
       if (e.target.dataset.add === "task") {
         await api("/api/tasks", { method: "POST", body: { title, status: "todo" } });
-        toast("Task added to your inbox");
+        toast("Mission added to your inbox");
       } else {
         await api("/api/ideas", { method: "POST", body: { title } });
         toast("Idea captured");
