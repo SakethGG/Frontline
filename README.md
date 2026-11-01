@@ -28,7 +28,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 - 🧹 **No repeats, no noise.** The same paper from different sources is merged into one, papers you've already seen are skipped, and off-topic results are dropped.
 - 🧠 **Read 20 papers in 2 minutes.** AI writes a short briefing card for each paper (TL;DR, key points, method, results, limitations) and scores how relevant it is **to you**, from 0 to 10.
 - 🔬 **Follow the labs you care about.** Add a professor by name, and you'll see every paper their lab puts out.
-- 📚 **Everything else in one place.** A paper library, a conference deadline tracker, an ideas notebook and a project board, all connected.
+- 📚 **Everything else in one place.** A paper library, a deadline tracker (yours and conferences'), an ideas notebook and a project board, all connected.
 - 🔒 **Your data stays yours.** Everything is stored on your computer. Your PDFs are plain files in a folder you choose.
 
 ### How it compares
@@ -41,7 +41,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 | Ranks papers by relevance to *you* | ✅ | ❌ | ❌ | ❌ |
 | Follow a lab, not just an author profile | ✅ | ➖ | ❌ | ❌ |
 | Chat with a paper's full PDF | ✅ | ❌ | ❌ | ➖ |
-| Conference deadlines + calendar export | ✅ | ❌ | ❌ | ❌ |
+| Personal + conference deadlines, calendar export | ✅ | ❌ | ❌ | ❌ |
 | Ideas → proposals → projects | ✅ | ❌ | ❌ | ❌ |
 
 ---
@@ -59,7 +59,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 ## Everything in one window
 
 <p align="center">
-  <img src="docs/images/workspace.svg" alt="Six sections: Home, Radar, Library, Conferences, Ideas, Projects" width="100%">
+  <img src="docs/images/workspace.svg" alt="Six sections: Home, Radar, Library, Deadlines, Ideas, Projects" width="100%">
 </p>
 
 | Section | What it does for you |
@@ -67,7 +67,7 @@ Keeping up with research is a part-time job. Hundreds of papers land every week,
 | 🏠 **Home** | Today at a glance: next deadlines, tasks due this week, the best new papers, your reading queue and recent ideas. |
 | 📡 **Radar** | Your feed of fresh papers, with AI summaries, scores and a sweep digest. |
 | 📚 **Library** | Your PDFs in a folder you choose (any local folder, or a synced one), tagged by your interests automatically. |
-| 🗓️ **Conferences** | Live countdowns to the deadlines you care about, from a catalog of ML, vision, NLP and robotics venues. |
+| 🗓️ **Deadlines** | Live countdowns to your own deadlines and your venues', from a catalog of ML, vision, NLP and robotics conferences and workshops. |
 | 💡 **Ideas** | Capture ideas, grow them into proposals and roadmaps, and pressure-test them with AI. |
 | ✅ **Projects** | A to-do board and backlog for each project, counting down to its target venue. |
 
@@ -167,13 +167,15 @@ Every PDF is identified from its arXiv ID or DOI when it has one, so you get the
 </details>
 
 <details>
-<summary><b>🗓️ Conferences & workshops</b></summary>
+<summary><b>🗓️ Deadlines: personal, conferences & workshops</b></summary>
 
+- **One timeline:** your own deadlines and your tracked venues' deadlines count down together. Filter to **Personal** or **Conferences**.
+- **Personal deadlines:** **+ Deadline** (or `n`) adds anything with a date: a thesis draft, a grant report, a visa renewal. The time is optional (no time means the end of that day), and you can link it to a project. Tick it off when it's done; open ones stay on the timeline until you do.
 - **Catalog:** browse the community-maintained [huggingface/ai-deadlines](https://github.com/huggingface/ai-deadlines) catalog. It covers ML, vision, NLP, robotics and more, with every deadline converted from AoE/PST/UTC into your local time.
 - **Focus areas:** pick yours to get open deadlines suggested.
 - **Tracking:** tracked venues stay up to date. When the catalog announces a series' next edition, it's added for you.
 - **Manual entries:** add workshops, journals or anything missing by hand. If you edit a catalog venue's dates, later updates leave it alone.
-- **Calendar export:** **📅 Export calendar** downloads an `.ics` file with every deadline (reminders a week and a day before), the conference dates and your dated tasks. Import it into Google Calendar, Outlook or Apple Calendar.
+- **Calendar export:** **📅 Export calendar** downloads an `.ics` file with every open deadline, personal and conference (reminders a week and a day before), the conference dates and your dated tasks. Import it into Google Calendar, Outlook or Apple Calendar.
 
 </details>
 
@@ -181,7 +183,7 @@ Every PDF is identified from its arXiv ID or DOI when it has one, so you get the
 <summary><b>💡 Ideas</b></summary>
 
 - **Capture:** type an idea and press Enter. Proposals and roadmaps start from a template.
-- **Develop:** write Markdown notes (they save as you type), add tags and a milestone checklist, link the papers an idea builds on, and move ideas through **Spark → Exploring → Developing → Active → Parked** on a drag-and-drop board.
+- **Develop:** write Markdown notes (they save as you type), jot small **quick notes** beside them (colour-coded sticky notes for passing thoughts, edited in place), add tags and a milestone checklist, link the papers an idea builds on, and move ideas through **Spark → Exploring → Developing → Active → Parked** on a drag-and-drop board.
 - **AI assistant** (API key needed):
   - **Pressure-test** gives strengths, weak spots, a novelty check against the linked papers, and next steps.
   - **Brainstorm** suggests six directions.
@@ -206,7 +208,7 @@ Every PDF is identified from its arXiv ID or DOI when it has one, so you get the
 
 | Keys | Action |
 |---|---|
-| `h` `r` `l` `c` `i` `p` | Jump to Home / Radar / Library / Conferences / Ideas / Projects |
+| `h` `r` `l` `c` `i` `p` | Jump to Home / Radar / Library / Deadlines / Ideas / Projects |
 | `n` | New idea or task |
 | `/` | Search the current section |
 | `?` | Show all shortcuts |
@@ -220,6 +222,15 @@ Every PDF is identified from its arXiv ID or DOI when it has one, so you get the
 </details>
 
 ---
+
+## Moving to a new computer
+
+There's no account or cloud, so your data travels as one file. Open **⚙ Settings → Your data**:
+
+1. **⬇ Back up to a file** saves `frontline-backup-<date>.frontline`. It holds your topics, followed researchers, papers, summaries, stars and read marks, library index, ideas, projects, tasks, deadlines, conferences and UI preferences. Tick **Include library PDFs** if your PDFs aren't already in a synced folder (Google Drive, Dropbox, …).
+2. Install Frontline on the new computer, open **⚙ Settings → ⬆ Restore from a backup…** and pick the file. Everything comes back as it was. Restored PDFs go into your library folder, or `~/Frontline Library` if there isn't one yet.
+
+API keys aren't in the backup: copy your `.env` file across yourself. The `.frontline` file is a plain zip (`manifest.json`, `frontline.db`, optional `library/`). Restore also accepts a bare `frontline.db`, so copying `data/frontline.db` by hand works too.
 
 ## Configuration
 
@@ -280,8 +291,9 @@ All settings live in `.env` (copy it from `.env.example`). Only an API key is ne
 | `frontline/sweep.py` | Orchestration, progress state, scheduler |
 | `frontline/notify.py` | Desktop notifications (Windows/macOS), ntfy and email |
 | `frontline/library.py` | Paper library: folder scanning, PDF metadata, interest tagging, file actions |
+| `frontline/backup.py` | Back up everything to one `.frontline` file and restore it on another computer |
 | `frontline/conferences.py` | Conference catalog, tracked venues, time zones, calendar export |
-| `frontline/planner.py` | Ideas, idea assistant, projects and tasks |
+| `frontline/planner.py` | Ideas, idea assistant, projects, tasks and personal deadlines |
 | `frontline/db.py` | SQLite storage |
 | `frontline/app.py` | FastAPI routes |
 | `frontline/desktop.py` | Desktop window (pywebview), Windows shortcuts and macOS `.app` installer |
