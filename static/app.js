@@ -1,5 +1,5 @@
 // Frontline UI — vanilla JS, talks to the FastAPI backend.
-// Sections (Home · Radar · Library · Conferences · Ideas · Projects) are switched from the top nav;
+// Sections (Home · Radar · Library · Deadlines · Ideas · Projects) are switched from the top nav;
 // this file holds the shared helpers and the Radar, the others live in their own files and register
 // themselves in `Sections`.
 // Radar navigation model: Topic (pills) → View (New / All / Starred) → optional Subtopic → cards → Reader panel.
@@ -10,7 +10,7 @@ const md = (s) => (window.marked && window.DOMPurify ? DOMPurify.sanitize(marked
 
 const PAGE = 60;
 const RELEVANT_MIN = 5;
-const SECTIONS = ["home", "radar", "library", "conferences", "ideas", "projects"];
+const SECTIONS = ["home", "radar", "library", "deadlines", "ideas", "projects"];
 const Sections = {};  // name -> { show(), search(q), onKey(e), placeholder }
 const state = {
   section: "radar",
@@ -110,6 +110,7 @@ function countdown(iso) {
   const text = d >= 2 ? `${d}d ${h % 24}h` : h >= 1 ? `${h}h ${m % 60}m` : `${m}m`;
   return { text, cls: d < 7 ? "urgent" : d < 30 ? "soon" : "later" };
 }
+const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 // A task due date (YYYY-MM-DD) relative to today: { text, cls }
@@ -148,6 +149,7 @@ const drawerOpen = () => $("#drawer").classList.contains("open");
 // ---------------------------------------------------------------- sections
 
 function showSection(name, { push = true } = {}) {
+  if (name === "conferences") name = "deadlines";  // old links and bookmarks
   if (!SECTIONS.includes(name)) name = "radar";
   closeReader();
   closeDrawer();
@@ -963,7 +965,7 @@ function bind() {
   document.addEventListener("keydown", onKey);
 }
 
-const SECTION_KEYS = { h: "home", r: "radar", l: "library", c: "conferences", i: "ideas", p: "projects" };
+const SECTION_KEYS = { h: "home", r: "radar", l: "library", c: "deadlines", i: "ideas", p: "projects" };
 
 function onKey(e) {
   if (document.querySelector("dialog[open]")) return;
@@ -1001,7 +1003,7 @@ window.addEventListener("DOMContentLoaded", async function init() {
   const sweepParam = params.get("sweep");
   if (sweepParam) Object.assign(state, { sweepId: +sweepParam, view: "all" });
   bind();
-  const fromHash = location.hash.slice(1);
+  const fromHash = location.hash.slice(1) === "conferences" ? "deadlines" : location.hash.slice(1);
   // links from notifications (?sweep= / ?paper=) always land on the Radar
   showSection(sweepParam || params.get("paper") ? "radar" : SECTIONS.includes(fromHash) ? fromHash : state.section);
   api("/api/library/radar-ids").then((ids) => ids.forEach((i) => savedToLibrary.add(i))).catch(() => {});

@@ -1,12 +1,12 @@
-// Conferences & workshops: tracked venues, a live deadline timeline, catalog suggestions for the
-// user's focus areas, and a manual editor (handy for workshops and journals).
+// Deadlines: personal deadlines and tracked venues' deadlines on one live timeline, plus conferences &
+// workshops (tracked venues, catalog suggestions for the user's focus areas, a manual editor).
 (() => {
   const C = {
-    placeholder: "Search your venues…",
-    tracked: [], projects: [], catalog: null, catalogTags: [], focus: [], q: "",
-    showPast: false, catTag: null, editId: null,
+    placeholder: "Search deadlines and venues…",
+    tracked: [], mine: [], projects: [], catalog: null, catalogTags: [], focus: [], q: "",
+    showPast: false, filter: "all", catTag: null, editId: null, dlEditId: null,
   };
-  Sections.conferences = C;
+  Sections.deadlines = C;
   const KIND = { conference: "Conference", workshop: "Workshop", journal: "Journal", other: "Venue" };
   const TZ_ALIASES = { PST: "America/Los_Angeles", PDT: "America/Los_Angeles", PT: "America/Los_Angeles", EST: "America/New_York", EDT: "America/New_York", ET: "America/New_York", CST: "America/Chicago", CET: "Europe/Paris", CEST: "Europe/Paris", BST: "Europe/London", JST: "Asia/Tokyo", KST: "Asia/Seoul", IST: "Asia/Kolkata" };
   const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -39,7 +39,8 @@
   // ---------------------------------------------------------------- loading
 
   C.show = async () => {
-    [C.tracked, C.focus, C.projects] = await Promise.all([api("/api/conferences"), api("/api/conferences/focus"), api("/api/projects").catch(() => [])]);
+    [C.tracked, C.mine, C.focus, C.projects] = await Promise.all([api("/api/conferences"), api("/api/deadlines"),
+      api("/api/conferences/focus"), api("/api/projects").catch(() => [])]);
     render();
     loadCatalog().then(renderSuggestions).catch((e) => {
       $("#confSuggest").innerHTML = `<p class="hint">Couldn't load the conference catalog (${esc(e.message)}). You can still add venues manually.</p>`;
@@ -59,6 +60,7 @@
   const nextDeadline = (c) => c.deadlines.find((d) => new Date(d.at) > Date.now());
   const matches = (c) => !C.q || [c.name, c.full_name, c.location, c.parent, c.notes, (c.tags || []).join(" "), String(c.year || "")]
     .join(" ").toLowerCase().includes(C.q.toLowerCase());
+  const matchesMine = (d) => !C.q || `${d.title} ${d.notes}`.toLowerCase().includes(C.q.toLowerCase());
   const title = (c) => `${c.name}${c.year && !String(c.name).includes(c.year) ? ` ${c.year}` : ""}`;
   function dateRange(c) {
     if (c.date_text) return c.date_text;
@@ -83,19 +85,36 @@
   }
 
   function renderTimeline() {
-    const cutoff = Date.now() - 60 * 864e5;
-    const rows = C.tracked.filter(matches).flatMap((c) => c.deadlines.map((d) => ({ ...d, c })))
-      .filter((d) => (C.showPast ? new Date(d.at) > cutoff : new Date(d.at) > Date.now()))
-      .sort((a, b) => a.at.localeCompare(b.at));
-    $("#confTimeline").innerHTML = rows.map((d) => {
-      const cd = countdown(d.at);
-      return `<li class="${cd.cls}">
-        <span class="countdown ${cd.cls}" title="${esc(new Date(d.at).toString())}">${cd.text}</span>
-        <span class="tl-main"><b>${esc(title(d.c))}</b>${d.c.kind !== "conference" ? ` <span class="kind-badge">${KIND[d.c.kind]}</span>` : ""} · ${esc(d.label)}
-          <small>${fmtWhen(d.at)} your time${d.tz && d.tz !== LOCAL_TZ ? ` · ${esc(inZone(d.at, d.tz).replace("T", " "))} ${esc(d.tz)}` : ""}</small></span>
-        ${d.c.url ? `<a class="act" href="${esc(d.c.url)}" target="_blank" rel="noopener" title="Website">↗</a>` : ""}
-      </li>`;
-    }).join("") || `<li class="hint">${C.tracked.length ? "No upcoming deadlines for your venues." : "Track a venue to see its deadlines counting down here."}</li>`;
+    const now = Date.now(), cutoff = now - 60 * 864e5;
+    const venueRows = C.filter === "personal" ? [] : C.tracked.filter(matches).flatMap((c) => c.deadlines.map((d) => ({ ...d, c })))
+      .filter((d) => (C.showPast ? new Date(d.at) > cutoff : new Date(d.at) > now));
+    // personal: open ones stay until ticked off (overdue shows as "passed"); done ones only with "Show past"
+    const mineRows = C.filter === "venues" ? [] : C.mine.filter(matchesMine)
+      .filter((d) => (C.showPast ? new Date(d.at) > cutoff || !d.done : !d.done && new Date(d.at) > cutoff));
+    const rows = [...venueRows, ...mineRows].sort((a, b) => new Date(a.at) - new Date(b.at));
+    $("#confTimeline").innerHTML = rows.map((d) => (d.c ? venueRow(d) : personalRow(d))).join("") ||
+      `<li class="hint">${C.tracked.length || C.mine.length ? "Nothing coming up." : "Add a deadline of your own, or track a venue to see its deadlines counting down here."}</li>`;
+  }
+
+  function venueRow(d) {
+    const cd = countdown(d.at);
+    return `<li class="${cd.cls}">
+      <span class="countdown ${cd.cls}" title="${esc(new Date(d.at).toString())}">${cd.text}</span>
+      <span class="tl-main"><b>${esc(title(d.c))}</b>${d.c.kind !== "conference" ? ` <span class="kind-badge">${KIND[d.c.kind]}</span>` : ""} · ${esc(d.label)}
+        <small>${fmtWhen(d.at)} your time${d.tz && d.tz !== LOCAL_TZ ? ` · ${esc(inZone(d.at, d.tz).replace("T", " "))} ${esc(d.tz)}` : ""}</small></span>
+      ${d.c.url ? `<a class="act" href="${esc(d.c.url)}" target="_blank" rel="noopener" title="Website">↗</a>` : ""}
+    </li>`;
+  }
+
+  function personalRow(d) {
+    const cd = d.done ? { text: "done", cls: "past" } : countdown(d.at);
+    const p = C.projects.find((x) => x.id === d.project_id);
+    return `<li class="personal ${cd.cls} ${d.done ? "done" : ""}" data-dl="${d.id}" ${p?.color ? `style="border-left-color:${esc(p.color)}"` : ""}>
+      <input type="checkbox" class="tl-check" data-dl-done ${d.done ? "checked" : ""} aria-label="Mark done">
+      <span class="countdown ${cd.cls}">${cd.text}</span>
+      <span class="tl-main" title="Edit"><b>${esc(d.title)}</b>${p ? ` · ${esc(p.name)}` : ""}
+        <small>${d.all_day ? fmtDay(d.at) : `${fmtWhen(d.at)}`}${d.notes ? ` · ${esc(d.notes.split("\n")[0])}` : ""}</small></span>
+    </li>`;
   }
 
   function deadlineList(c) {
@@ -203,7 +222,6 @@
       C.tracked = await api("/api/conferences");
       render();
       if ($("#catalogModal").open) renderCatalog();
-      refreshNavBadges();
     } catch (e) { toast(e.message); if (btn) { btn.disabled = false; btn.textContent = "Track"; } }
   }
 
@@ -271,7 +289,6 @@
       toast(C.editId ? "Saved" : `Tracking ${body.name}`);
       C.tracked = await api("/api/conferences");
       render();
-      refreshNavBadges();
     } catch (err) { toast(err.message); }
   }
 
@@ -283,17 +300,77 @@
     $("#confModal").close();
     C.tracked = C.tracked.filter((x) => x.id !== c.id);
     render();
-    refreshNavBadges();
+  }
+
+  // ---------------------------------------------------------------- personal deadlines
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const localDate = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+
+  function openDeadline(d) {
+    const f = $("#dlForm");
+    f.reset();
+    C.dlEditId = d?.id ?? null;
+    $("#dlTitle").textContent = d ? "Edit deadline" : "New deadline";
+    $("#dlDelete").hidden = !d;
+    f.project_id.innerHTML = `<option value="">(none)</option>` +
+      C.projects.filter((p) => p.status !== "done" || p.id === d?.project_id).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+    if (d) {
+      const at = new Date(d.at);
+      f.title.value = d.title;
+      f.date.value = localDate(at);
+      f.time.value = d.all_day ? "" : `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+      f.project_id.value = d.project_id || "";
+      f.notes.value = d.notes;
+      f.done.checked = d.done;
+    }
+    $("#dlModal").showModal();
+    f.title.focus();
+  }
+
+  async function saveDeadline(e) {
+    e.preventDefault();
+    const f = e.target;
+    const at = new Date(`${f.date.value}T${f.time.value || "23:59"}`);  // no time: end of that day, your time
+    if (isNaN(at)) return toast("Pick a date");
+    const pid = +f.project_id.value || null;
+    const body = { title: f.title.value.trim(), at: at.toISOString(), all_day: !f.time.value, notes: f.notes.value.trim(),
+      done: f.done.checked, ...(pid ? { project_id: pid } : { clear_project: true }) };
+    try {
+      await api(C.dlEditId ? `/api/deadlines/${C.dlEditId}` : "/api/deadlines", { method: C.dlEditId ? "PATCH" : "POST", body });
+      $("#dlModal").close();
+      toast(C.dlEditId ? "Saved" : `Added: ${countdown(body.at).text} to go`);
+      await reloadMine();
+    } catch (err) { toast(err.message); }
+  }
+
+  async function reloadMine() {
+    C.mine = await api("/api/deadlines");
+    renderTimeline();
   }
 
   // ---------------------------------------------------------------- binding
 
   C.search = (q) => { C.q = q; render(); };
-  C.onKey = (e) => { if (e.key === "n") { e.preventDefault(); openEditor(null); } };
+  C.onKey = (e) => { if (e.key === "n") { e.preventDefault(); openDeadline(null); } };
 
   document.addEventListener("DOMContentLoaded", () => {
-    const page = $('main[data-section="conferences"]');
-    page.addEventListener("click", (e) => {
+    const page = $('main[data-section="deadlines"]');
+    page.addEventListener("click", async (e) => {
+      const row = e.target.closest("[data-dl]");
+      if (row) {
+        const d = C.mine.find((x) => x.id === +row.dataset.dl);
+        if (!e.target.closest("[data-dl-done]")) return openDeadline(d);
+        await api(`/api/deadlines/${d.id}`, { method: "PATCH", body: { done: e.target.checked } }).catch((err) => toast(err.message));
+        if (e.target.checked) toast(`Done: ${d.title}`);
+        return reloadMine();
+      }
+      const f = e.target.closest("[data-dlf]");
+      if (f) {
+        C.filter = f.dataset.dlf;
+        $$("#dlFilter button").forEach((b) => b.classList.toggle("on", b === f));
+        return renderTimeline();
+      }
       if (e.target.closest("#confEditFocus")) return openFocus();
       const proj = e.target.closest("[data-proj]");
       if (proj) { showSection("projects"); return Sections.projects.select(+proj.dataset.proj); }
@@ -308,6 +385,15 @@
     });
     $("#confBrowse").onclick = openCatalog;
     $("#confAdd").onclick = () => openEditor(null);
+    $("#dlAdd").onclick = () => openDeadline(null);
+    $("#dlForm").onsubmit = saveDeadline;
+    $("#dlDelete").onclick = async () => {
+      const d = C.mine.find((x) => x.id === C.dlEditId);
+      if (!d || !confirm(`Delete “${d.title}”?`)) return;
+      await api(`/api/deadlines/${d.id}`, { method: "DELETE" });
+      $("#dlModal").close();
+      await reloadMine();
+    };
     $("#confPast").onchange = (e) => { C.showPast = e.target.checked; renderTimeline(); };
     $("#catalogQ").oninput = debounce(renderCatalog, 150);
     $("#catalogModal").addEventListener("click", async (e) => {
@@ -329,6 +415,6 @@
     $("#cmDeadlines").onclick = (e) => { if (e.target.closest("[data-rm-dl]")) e.target.closest(".dl-row").remove(); };
     $("#cmDelete").onclick = () => untrack(C.tracked.find((x) => x.id === C.editId));
     // keep countdowns ticking
-    setInterval(() => { if (state.section === "conferences" && !document.hidden) { renderTimeline(); renderTracked(); } }, 60 * 1000);
+    setInterval(() => { if (state.section === "deadlines" && !document.hidden) { renderTimeline(); renderTracked(); } }, 60 * 1000);
   });
 })();

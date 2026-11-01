@@ -8,8 +8,8 @@
     $("#homeHello").textContent = hour < 5 ? "Working late" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
     $("#homeDate").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
     const get = (url, fallback) => api(url).catch(() => fallback);
-    const [confs, tasks, projects, papers, lib, ideas] = await Promise.all([
-      get("/api/conferences", []), get("/api/tasks", []), get("/api/projects", []),
+    const [confs, tasks, projects, mine, papers, lib, ideas] = await Promise.all([
+      get("/api/conferences", []), get("/api/tasks", []), get("/api/projects", []), get("/api/deadlines", []),
       get("/api/papers?unread=true&min_relevance=5&sort=relevance&limit=4", { items: [], total: 0 }),
       get("/api/library", []), get("/api/ideas", []),
     ]);
@@ -17,8 +17,11 @@
     const pname = Object.fromEntries(projects.map((p) => [p.id, p]));
     const now = new Date().toISOString();
 
-    const deadlines = confs.flatMap((c) => c.deadlines.filter((d) => d.at >= now).map((d) => ({ ...d, c })))
-      .sort((a, b) => a.at.localeCompare(b.at)).slice(0, 5);
+    const later = (d) => new Date(d.at) >= new Date(now);
+    const deadlines = [
+      ...confs.flatMap((c) => c.deadlines.filter(later).map((d) => ({ ...d, name: `${c.name} ${c.year || ""}`.trim() }))),
+      ...mine.filter((d) => !d.done && later(d)).map((d) => ({ ...d, name: d.title, label: "" })),
+    ].sort((a, b) => new Date(a.at) - new Date(b.at)).slice(0, 5);
     const open = tasks.filter((t) => t.status === "todo" || t.status === "doing");
     const focus = open.filter((t) => t.status === "doing" || (t.due && t.due <= new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)) || t.priority === 2)
       .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || b.priority - a.priority).slice(0, 7);
@@ -32,13 +35,13 @@
       </section>`;
 
     $("#homeGrid").innerHTML = [
-      panel("Next deadlines", ["conferences", "All venues"], deadlines.length
+      panel("Next deadlines", ["deadlines", "All deadlines"], deadlines.length
         ? `<ol class="timeline compact">${deadlines.map((d) => {
             const cd = countdown(d.at);
             return `<li><span class="countdown ${cd.cls}">${cd.text}</span>
-              <span class="tl-main"><b>${esc(d.c.name)} ${d.c.year || ""}</b> · ${esc(d.label)}<small>${fmtWhen(d.at)}</small></span></li>`;
+              <span class="tl-main"><b>${esc(d.name)}</b>${d.label ? ` · ${esc(d.label)}` : ""}<small>${d.all_day ? fmtDay(d.at) : fmtWhen(d.at)}</small></span></li>`;
           }).join("")}</ol>`
-        : `<p class="hint">No upcoming deadlines. <button class="text-btn" data-go="conferences">Track a conference</button> to see its countdown here.</p>`),
+        : `<p class="hint">No upcoming deadlines. <button class="text-btn" data-go="deadlines">Add one or track a conference</button> to see its countdown here.</p>`),
 
       panel("Focus this week", ["projects", "All tasks"], (focus.length
         ? `<ul class="task-mini">${focus.map((t) => {
@@ -83,7 +86,6 @@
       if (done) {
         await api(`/api/tasks/${done.dataset.done}`, { method: "PATCH", body: { status: "done" } });
         toast("Done ✓");
-        refreshNavBadges();
         return H.show();
       }
       const r = e.target.closest("[data-radar]");

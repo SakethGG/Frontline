@@ -32,7 +32,7 @@
       <a class="section-link" href="#home" data-section="home">Home</a>
       <a class="section-link" href="#radar" data-section="radar">Radar <span class="badge" id="navRadar"></span></a>
       <a class="section-link" href="#library" data-section="library">Library</a>
-      <a class="section-link" href="#conferences" data-section="conferences">Conferences <span class="badge" id="navConf"></span></a>
+      <a class="section-link" href="#deadlines" data-section="deadlines">Deadlines</a>
       <a class="section-link" href="#ideas" data-section="ideas">Ideas</a>
       <a class="section-link" href="#projects" data-section="projects">Projects <span class="badge" id="navTasks"></span></a>
     </nav>
@@ -114,27 +114,35 @@
     <div class="dropzone" id="libDrop" hidden><div>Drop PDFs to add them to your library</div></div>
   </main>
 
-  <!-- Conferences & workshops -->
-  <main class="page" data-section="conferences" hidden>
+  <!-- Deadlines: personal ones plus conferences & workshops, on one timeline -->
+  <main class="page" data-section="deadlines" hidden>
     <div class="section-head">
-      <div><h1>Conferences &amp; workshops</h1><p class="sub">Deadlines for the venues you're aiming at, in your local time.</p></div>
+      <div><h1>Deadlines</h1><p class="sub">Your own deadlines and your venues', counting down in your local time.</p></div>
       <div class="head-actions">
         <a class="ghost-btn" href="/api/calendar.ics" title="Deadlines and dated tasks as a calendar file (Google Calendar, Outlook, Apple Calendar)">📅 Export calendar</a>
-        <button class="ghost-btn" id="confAdd">+ Add manually</button>
-        <button class="primary-btn" id="confBrowse">Browse catalog</button>
+        <button class="primary-btn" id="dlAdd">+ Deadline</button>
       </div>
     </div>
-    <div class="interest-row" id="confFocus"></div>
     <div class="conf-layout">
       <section class="panel">
-        <div class="panel-head"><h2>Upcoming deadlines</h2>
+        <div class="panel-head"><h2>Upcoming</h2>
           <label class="switch small"><input type="checkbox" id="confPast"><span class="track"></span> Show past</label></div>
+        <div class="seg small" id="dlFilter">
+          <button data-dlf="all" class="on">All</button><button data-dlf="personal">Personal</button><button data-dlf="venues">Conferences</button>
+        </div>
         <ol class="timeline" id="confTimeline"></ol>
       </section>
       <section>
-        <h2 class="group-title">Tracking</h2>
+        <div class="sub-head">
+          <h2 class="group-title">Conferences &amp; workshops</h2>
+          <span class="spacer"></span>
+          <button class="ghost-btn" id="confAdd">+ Add manually</button>
+          <button class="ghost-btn" id="confBrowse">Browse catalog</button>
+        </div>
+        <div class="interest-row" id="confFocus"></div>
+        <h3 class="group-title small">Tracking</h3>
         <div class="conf-grid" id="confTracked"></div>
-        <h2 class="group-title" id="confSuggestTitle">Suggested for your focus</h2>
+        <h3 class="group-title small" id="confSuggestTitle">Suggested for your focus</h3>
         <div class="conf-grid" id="confSuggest"></div>
       </section>
     </div>
@@ -329,6 +337,29 @@
     <div class="modal-foot"><span class="spacer"></span><button class="primary-btn" id="focusSave">Done</button></div>
   </dialog>
 
+  <!-- Personal deadline editor -->
+  <dialog class="modal" id="dlModal">
+    <form method="dialog" id="dlForm">
+      <div class="modal-head"><h2 id="dlTitle">New deadline</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
+      <div class="modal-body form">
+        <label>What's due?<input name="title" required placeholder="Thesis draft, grant report, visa renewal…"></label>
+        <div class="row">
+          <label>Date<input name="date" type="date" required></label>
+          <label>Time <small>optional, your time</small><input name="time" type="time"></label>
+        </div>
+        <label>Project <small>optional</small><select name="project_id"></select></label>
+        <label>Notes<textarea name="notes" rows="3" placeholder="Where to submit, who to email…"></textarea></label>
+        <label class="check"><input type="checkbox" name="done"> Done</label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="danger-btn" id="dlDelete" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost-btn" data-close>Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Conference / workshop editor -->
   <dialog class="modal wide" id="confModal">
     <form method="dialog" id="confForm">
@@ -483,7 +514,7 @@
     <div class="modal-head"><h2>Keyboard shortcuts</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
     <div class="modal-body">
       <dl class="keys">
-        <dt><kbd>h</kbd> <kbd>r</kbd> <kbd>l</kbd> <kbd>c</kbd> <kbd>i</kbd> <kbd>p</kbd></dt><dd>Home / Radar / Library / Conferences / Ideas / Projects</dd>
+        <dt><kbd>h</kbd> <kbd>r</kbd> <kbd>l</kbd> <kbd>c</kbd> <kbd>i</kbd> <kbd>p</kbd></dt><dd>Home / Radar / Library / Deadlines (c for calendar) / Ideas / Projects</dd>
         <dt><kbd>n</kbd></dt><dd>New idea or task (on Ideas / Projects)</dd>
         <dt><kbd>/</kbd></dt><dd>Search the current section</dd>
       </dl>
@@ -505,7 +536,7 @@
   <script src="/static/app.js?v=7"></script>
   <script src="/static/home.js?v=2"></script>
   <script src="/static/library.js?v=5"></script>
-  <script src="/static/conferences.js?v=1"></script>
+  <script src="/static/conferences.js?v=2"></script>
   <script src="/static/ideas.js?v=1"></script>
   <script src="/static/projects.js?v=1"></script>
 </body>

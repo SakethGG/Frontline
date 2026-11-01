@@ -541,6 +541,14 @@ kbd {
 .panel-head a { font-size: 13px; }
 .group-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 12px; }
 .group-title:not(:first-child) { margin-top: 26px; }
+.group-title.small { font-size: 11.5px; color: var(--muted); }
+.sub-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.sub-head .group-title { margin: 0; }
+#dlFilter { margin-bottom: 12px; }
+.timeline .tl-check { width: 18px; height: 18px; accent-color: var(--ink); flex: none; cursor: pointer; margin: 0; }
+.timeline li.done .tl-main b { text-decoration: line-through; }
+.timeline li.personal { border-left-width: 6px; }
+.timeline li[data-dl] .tl-main { cursor: pointer; }
 .hint.inline { display: inline; margin: 0; font-size: 12.5px; }
 .warn-box { display: block; background: var(--accent-soft); border: 2px dashed var(--ink); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
 .pill {

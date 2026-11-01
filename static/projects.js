@@ -35,7 +35,6 @@
   async function reload() {
     [P.projects, P.tasks] = await Promise.all([api("/api/projects"), api("/api/tasks")]);
     render();
-    refreshNavBadges();
   }
 
   // ---------------------------------------------------------------- rendering
@@ -265,7 +264,7 @@
     $("#projHead").onclick = (e) => {
       if (e.target.closest("#projEdit")) return openProject(project());
       if (e.target.closest("#projNewHead")) return openProject(null);
-      if (e.target.closest("[data-goto]")) return showSection("conferences");
+      if (e.target.closest("[data-goto]")) return showSection("deadlines");
       const idea = e.target.closest("[data-goto-idea]");
       if (idea) { showSection("ideas"); Sections.ideas.open(+idea.dataset.gotoIdea); }
     };
@@ -336,7 +335,7 @@
     $("#projectForm").conference_id.onchange = (e) => {
       if (e.target.value !== "__add") return;
       $("#projectModal").close();
-      showSection("conferences");
+      showSection("deadlines");
       toast("Track the venue you're aiming for, then pick it as the project's target");
     };
     $("#pmDelete").onclick = deleteProject;
