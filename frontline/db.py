@@ -150,6 +150,18 @@ CREATE TABLE IF NOT EXISTS tasks (
     done_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+-- Personal deadlines (thesis draft, grant, visa…): `at` is a UTC instant like conference deadlines.
+CREATE TABLE IF NOT EXISTS deadlines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    at TEXT NOT NULL,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 # Columns added after the first release; init() adds any that an older database is missing.
@@ -489,7 +501,7 @@ def set_setting(key: str, value) -> None:
 
 
 # ---------------------------------------------------------------- planner records
-# Library papers, conferences, ideas, projects and tasks are plain records: these helpers
+# Library papers, conferences, ideas, projects, tasks and personal deadlines are plain records: these helpers
 # handle JSON/bool columns and timestamps, and ignore keys that aren't columns.
 
 RECORD_JSON = {
@@ -498,8 +510,9 @@ RECORD_JSON = {
     "ideas": ("tags", "papers", "milestones"),
     "projects": (),
     "tasks": (),
+    "deadlines": (),
 }
-RECORD_BOOL = ("starred", "missing", "pinned", "custom")
+RECORD_BOOL = ("starred", "missing", "pinned", "custom", "all_day", "done")
 _cols: dict[str, set[str]] = {}
 
 

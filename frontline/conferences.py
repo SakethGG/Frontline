@@ -334,7 +334,7 @@ def _ics_dt(iso: str) -> str:
 
 
 def calendar_ics() -> str:
-    """Tracked deadlines (with 1-week and 1-day reminders), conference dates, and dated tasks."""
+    """Tracked and personal deadlines (with 1-week and 1-day reminders), conference dates, and dated tasks."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     ev = []
@@ -358,6 +358,18 @@ def calendar_ics() -> str:
         ev += ["BEGIN:VEVENT", f"UID:frontline-conf-{c['id']}@frontline", f"DTSTAMP:{stamp}",
                f"DTSTART;VALUE=DATE:{start:%Y%m%d}", f"DTEND;VALUE=DATE:{end + timedelta(days=1):%Y%m%d}",
                f"SUMMARY:{_ics_text(title)}", f"LOCATION:{_ics_text(c['location'])}", "END:VEVENT"]
+    for d in db.list_records("deadlines", "done = 0 AND at >= ?", (since,)):
+        summary = _ics_text("⏰ " + d["title"])
+        if d["all_day"]:
+            day = datetime.fromisoformat(d["at"].replace("Z", "+00:00")).astimezone().date()
+            when = [f"DTSTART;VALUE=DATE:{day:%Y%m%d}", f"DTEND;VALUE=DATE:{day + timedelta(days=1):%Y%m%d}"]
+        else:
+            when = [f"DTSTART:{_ics_dt(d['at'])}", f"DTEND:{_ics_dt(d['at'])}"]
+        ev += ["BEGIN:VEVENT", f"UID:frontline-deadline-{d['id']}@frontline", f"DTSTAMP:{stamp}", *when,
+               f"SUMMARY:{summary}", f"DESCRIPTION:{_ics_text(d['notes'])}",
+               "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:-P7D", f"DESCRIPTION:{_ics_text(d['title'])} in a week", "END:VALARM",
+               "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:-P1D", f"DESCRIPTION:{_ics_text(d['title'])} tomorrow", "END:VALARM",
+               "END:VEVENT"]
     projects = {p["id"]: p["name"] for p in db.list_records("projects")}
     for t in db.list_records("tasks", "due != '' AND status != 'done'"):
         try:

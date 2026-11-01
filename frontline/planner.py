@@ -1,4 +1,6 @@
-"""Ideation center (ideas, proposals, roadmaps) and project planning (projects + tasks)."""
+"""Ideation center (ideas, proposals, roadmaps), project planning (projects + tasks) and personal deadlines."""
+
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -218,4 +220,55 @@ def update_task(tid: int, body: TaskIn):
 @router.delete("/tasks/{tid}")
 def delete_task(tid: int):
     db.delete_record("tasks", tid)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- personal deadlines
+
+class DeadlineIn(BaseModel):
+    title: str | None = Field(None, min_length=1)
+    at: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")  # ISO instant, from the browser
+    all_day: bool | None = None
+    notes: str | None = None
+    done: bool | None = None
+    project_id: int | None = None
+    clear_project: bool = False
+
+
+def _utc(d: dict) -> dict:
+    if "at" in d:
+        try:
+            d["at"] = datetime.fromisoformat(d["at"].replace("Z", "+00:00")).astimezone(timezone.utc).isoformat(timespec="seconds")
+        except ValueError:
+            raise HTTPException(422, "That date isn't valid")
+    return d
+
+
+@router.get("/deadlines")
+def deadlines():
+    return db.list_records("deadlines", order="at")
+
+
+@router.post("/deadlines")
+def create_deadline(body: DeadlineIn):
+    d = body.model_dump(exclude_none=True, exclude={"clear_project"})
+    if not d.get("title") or not d.get("at"):
+        raise HTTPException(422, "Give the deadline a name and a date")
+    if d.get("project_id"):
+        _get("projects", d["project_id"])
+    return db.insert_record("deadlines", _utc(d))
+
+
+@router.patch("/deadlines/{did}")
+def update_deadline(did: int, body: DeadlineIn):
+    _get("deadlines", did)
+    d = body.model_dump(exclude_none=True, exclude={"clear_project"})
+    if body.clear_project:
+        d["project_id"] = None
+    return db.update_record("deadlines", did, _utc(d))
+
+
+@router.delete("/deadlines/{did}")
+def delete_deadline(did: int):
+    db.delete_record("deadlines", did)
     return {"ok": True}
