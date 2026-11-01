@@ -198,6 +198,28 @@ def init() -> None:
         c.commit()
 
 
+def snapshot(dest) -> None:
+    """Copy the whole database to `dest` as one consistent, self-contained file."""
+    out = sqlite3.connect(dest)
+    try:
+        with _lock:
+            conn().backup(out)
+        out.execute("PRAGMA journal_mode = DELETE")  # no -wal side file to forget
+    finally:
+        out.close()
+
+
+def restore(src) -> None:
+    """Replace everything in the database with the contents of `src` (a Frontline database file)."""
+    source = sqlite3.connect(src)
+    try:
+        with _lock:
+            source.backup(conn())
+    finally:
+        source.close()
+    init()  # a backup from an older version gets the newer tables and columns
+
+
 def _row(row: sqlite3.Row | None, json_fields) -> dict | None:
     if row is None:
         return None

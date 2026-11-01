@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import conferences, config, db, library, notify, planner, researchers, sources
+from . import backup, conferences, config, db, library, notify, planner, researchers, sources
 from .summarizer import API_ERRORS, explain, summarizer
 from .sweep import auto_sweep_loop, manager
 
@@ -37,6 +37,7 @@ app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 app.include_router(library.router)
 app.include_router(conferences.router)
 app.include_router(planner.router)
+app.include_router(backup.router)
 
 
 @app.get("/api/calendar.ics")
