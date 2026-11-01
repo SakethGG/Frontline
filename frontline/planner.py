@@ -38,6 +38,12 @@ class Milestone(BaseModel):
     done: bool = False
 
 
+class QuickNote(BaseModel):
+    text: str = ""
+    color: str = Field("", pattern=r"^(#[0-9a-fA-F]{6})?$")
+    at: str = ""
+
+
 class IdeaIn(BaseModel):
     title: str | None = Field(None, min_length=1)
     body: str | None = None
@@ -46,6 +52,7 @@ class IdeaIn(BaseModel):
     tags: list[str] | None = None
     papers: list[PaperRef] | None = None
     milestones: list[Milestone] | None = None
+    notes: list[QuickNote] | None = None
     pinned: bool | None = None
 
 

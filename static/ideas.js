@@ -44,7 +44,7 @@
 
   const plain = (s) => String(s || "").replace(/^#+\s.*$/gm, "").replace(/[*_>`#-]/g, "").replace(/\s+/g, " ").trim();
   const matches = (i) => (!I.kind || i.kind === I.kind) && (!I.tag || i.tags.includes(I.tag)) &&
-    (!I.q || [i.title, i.body, i.tags.join(" "), i.milestones.map((m) => m.title).join(" ")].join(" ").toLowerCase().includes(I.q.toLowerCase()));
+    (!I.q || [i.title, i.body, i.tags.join(" "), i.milestones.map((m) => m.title).join(" "), (i.notes || []).map((n) => n.text).join(" ")].join(" ").toLowerCase().includes(I.q.toLowerCase()));
 
   function render() {
     $$("#ideaTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.ikind === I.kind));
@@ -95,6 +95,7 @@
       <div class="ic-foot">
         ${i.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
         ${i.papers.length ? `<span class="meta">📎 ${i.papers.length}</span>` : ""}
+        ${i.notes?.length ? `<span class="meta" title="${plural(i.notes.length, "quick note")}">🗒 ${i.notes.length}</span>` : ""}
         ${i.milestones.length ? `<span class="meta">◇ ${done}/${i.milestones.length}</span>` : ""}
         ${proj ? `<span class="meta">🎯 project</span>` : ""}
         <span class="spacer"></span><span class="meta">${timeAgo(i.updated_at)}</span>
@@ -110,6 +111,8 @@
     const b = $('#drawer [data-f="body"]'), t = $('#drawer [data-f="title"]');
     if (b && b.value !== cur.body) out.body = b.value;
     if (t && t.value.trim() && t.value.trim() !== cur.title) out.title = t.value.trim();
+    const qn = readQuickNotes(cur);
+    if (qn) out.notes = qn;
     return out;
   }
 
@@ -120,6 +123,45 @@
     if (rerender) render();
     return updated;
   }
+
+  // ---------------------------------------------------------------- quick notes
+  // Small sticky notes beside the long-form notes: each is {text, color, at}, edited in place.
+
+  const NOTE_COLORS = ["#fff27a", "#ff8b7b", "#8fe3a4", "#7cc4ff", "#c9a7ff", "#ffb86b"];
+  const nextColor = (i) => NOTE_COLORS[(i.notes || []).length % NOTE_COLORS.length];
+
+  // the open drawer's quick notes with any unsaved typing, or null if nothing changed
+  function readQuickNotes(cur) {
+    const boxes = $$("#drawer [data-qn]");
+    if (!boxes.length) return null;
+    let changed = false;
+    const notes = (cur.notes || []).map((n, k) => {
+      const box = boxes.find((b) => +b.dataset.qn === k);
+      if (!box || box.value === n.text) return n;
+      changed = true;
+      return { ...n, text: box.value };
+    });
+    return changed ? notes : null;
+  }
+
+  const fitNote = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };
+
+  const quickNotesHTML = (i) => `
+      <div class="editor-head"><h4 class="sec-title">Quick notes ${i.notes?.length ? `<span class="hint inline">${i.notes.length}</span>` : ""}</h4></div>
+      <div class="qnotes">${(i.notes || []).map((n, k) => `
+        <div class="qnote" style="--qn:${esc(n.color || NOTE_COLORS[k % NOTE_COLORS.length])}">
+          <textarea data-qn="${k}" rows="2" aria-label="Quick note">${esc(n.text)}</textarea>
+          <div class="qn-foot">
+            <span>${n.at ? timeAgo(n.at) : ""}</span>
+            <span class="spacer"></span>
+            <button class="qn-color" data-qn-color="${k}" title="Change colour" aria-label="Change colour"></button>
+            <button class="icon-btn tiny" data-qn-rm="${k}" title="Delete note" aria-label="Delete note">✕</button>
+          </div>
+        </div>`).join("")}
+        <form class="qnote add" data-x="qn-add" style="--qn:${nextColor(i)}">
+          <textarea rows="2" placeholder="+ Jot a quick note (Enter to add, Shift+Enter for a new line)" aria-label="New quick note"></textarea>
+        </form>
+      </div>`;
 
   // ---------------------------------------------------------------- drawer editor
 
@@ -152,6 +194,7 @@
       ${I.preview
         ? `<div class="md preview-box" data-x="write">${md(i.body) || `<p class="hint">Nothing written yet.</p>`}</div>`
         : `<textarea class="notes big" data-f="body" placeholder="Brain-dump freely. Markdown works: ## headings, - bullets, **bold**.">${esc(i.body)}</textarea>`}
+      ${quickNotesHTML(i)}
 
       <div class="editor-head"><h4 class="sec-title">Milestones ${i.milestones.length ? `<span class="hint inline">${done}/${i.milestones.length}</span>` : ""}</h4></div>
       ${i.milestones.length ? `<div class="mini-progress wide"><span style="width:${(100 * done) / i.milestones.length}%"></span></div>` : ""}
@@ -190,6 +233,7 @@
         <span class="spacer"></span>
         <button class="danger-btn" data-x="delete">Delete</button>
       </div>`);
+    $$("#drawer [data-qn]").forEach(fitNote);
   }
 
   const ASSIST_TITLE = { critique: "Pressure-test", expand: "Brainstorm", proposal: "Proposal draft" };
@@ -260,6 +304,17 @@
       const ms = [...i.milestones];
       [ms[+v - 1], ms[+v]] = [ms[+v], ms[+v - 1]];
       return renderDrawer(await patch(i.id, { milestones: ms }));
+    }
+    if ((v = el("data-qn-rm")) != null) {
+      const n = i.notes[+v];
+      if (n.text.trim() && !confirm("Delete this note?")) return;
+      return renderDrawer(await patch(i.id, { notes: i.notes.filter((_, k) => k !== +v) }));
+    }
+    if ((v = el("data-qn-color")) != null) {
+      const cur = readQuickNotes(i) || i.notes;
+      const k = +v, at = NOTE_COLORS.indexOf(cur[k].color);
+      const notes = cur.map((n, j) => (j === k ? { ...n, color: NOTE_COLORS[(at + 1) % NOTE_COLORS.length] } : n));
+      return renderDrawer(await patch(i.id, { notes }));
     }
     if ((v = el("data-unlink")) != null) return renderDrawer(await patch(i.id, { papers: i.papers.filter((_, k) => k !== +v) }));
     if ((v = el("data-link")) != null) {
@@ -377,6 +432,11 @@
       const f = e.target.dataset.f;
       if (f === "title" && e.target.value.trim()) saveField(I.openId, "title", e.target.value.trim());
       if (f === "body") saveField(I.openId, "body", e.target.value);
+      if (e.target.matches("[data-qn], [data-x='qn-add'] textarea")) fitNote(e.target);
+      if (e.target.dataset.qn != null) {
+        const notes = readQuickNotes(I.ideas.find((x) => x.id === I.openId));
+        if (notes) saveField(I.openId, "notes", notes);
+      }
       if (e.target.dataset.x === "paper-q") searchPapers(e.target.value.trim());
     });
     drawer.addEventListener("change", async (e) => {
@@ -387,6 +447,15 @@
     drawer.addEventListener("keydown", async (e) => {
       if (state.section !== "ideas" || I.openId === null || e.key !== "Enter") return;
       const i = I.ideas.find((x) => x.id === I.openId);
+      if (e.target.closest("[data-x='qn-add']") && !e.shiftKey) {
+        e.preventDefault();
+        const text = e.target.value.trim();
+        if (!text) return;
+        const notes = [...(readQuickNotes(i) || i.notes || []), { text, color: nextColor(i), at: new Date().toISOString() }];
+        renderDrawer(await patch(i.id, { notes }));
+        $("#drawer [data-x='qn-add'] textarea")?.focus();
+        return;
+      }
       if (e.target.dataset.x === "tag-input") {
         e.preventDefault();
         const t = e.target.value.trim();

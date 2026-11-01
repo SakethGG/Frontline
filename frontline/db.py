@@ -172,6 +172,9 @@ MIGRATIONS = {
         "author_ids": "TEXT NOT NULL DEFAULT '{}'",
         "profile": "TEXT NOT NULL DEFAULT '{}'",
     },
+    "ideas": {
+        "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], beside the long-form body
+    },
 }
 
 TOPIC_JSON = ("queries", "subtopics", "arxiv_categories", "author_ids", "profile")
@@ -507,7 +510,7 @@ def set_setting(key: str, value) -> None:
 RECORD_JSON = {
     "library": ("authors", "tags"),
     "conferences": ("tags", "deadlines"),
-    "ideas": ("tags", "papers", "milestones"),
+    "ideas": ("tags", "papers", "milestones", "notes"),
     "projects": (),
     "tasks": (),
     "deadlines": (),

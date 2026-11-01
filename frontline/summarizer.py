@@ -506,11 +506,14 @@ def _idea_prompt(idea: dict, papers: list[dict], context: str) -> str:
         f"- {p.get('title', '')}" + (f" — {p['tldr']}" if p.get("tldr") else "") for p in papers[:20]
     ) or "(none)"
     milestones = "\n".join(f"- {m.get('title', '')}" for m in idea.get("milestones") or []) or "(none)"
+    quick = "\n".join("- " + n["text"].strip().replace("\n", "\n  ") for n in idea.get("notes") or [] if n.get("text", "").strip())
     return (
         f"<researcher_context>\n{context or '(not given)'}\n</researcher_context>\n\n"
         f"<idea kind=\"{idea.get('kind', 'idea')}\" status=\"{idea.get('status', '')}\">\n"
         f"Title: {idea.get('title', '')}\nTags: {', '.join(idea.get('tags') or [])}\n"
-        f"Notes:\n{idea.get('body') or '(empty)'}\n\nCurrent milestones:\n{milestones}\n</idea>\n\n"
+        f"Notes:\n{idea.get('body') or '(empty)'}\n\n"
+        + (f"Quick notes:\n{quick}\n\n" if quick else "")
+        + f"Current milestones:\n{milestones}\n</idea>\n\n"
         f"<linked_papers>\n{linked}\n</linked_papers>\n\n"
     )
 
