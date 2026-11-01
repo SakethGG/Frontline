@@ -145,7 +145,7 @@ kbd {
 /* followed researchers sidebar */
 .people {
   grid-column: 1; justify-self: start; width: 100%; max-width: 270px;
-  position: sticky; top: 92px; margin-top: 22px; max-height: calc(100vh - 114px); display: flex; flex-direction: column;
+  position: sticky; top: 92px; margin-top: 22px; max-height: calc(100vh / var(--zoom, 1) - 114px); display: flex; flex-direction: column;
   background: var(--surface); border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .people-title {
@@ -421,18 +421,17 @@ kbd {
 .modal-body { padding: 16px 20px 20px; max-height: 72vh; overflow: auto; }
 .modal-foot { display: flex; gap: 10px; padding: 12px 20px 16px; border-top: 3px solid var(--ink); }
 .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
-.topic-admin { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.topic-admin button {
-  width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  border: var(--bw) solid var(--ink); background: var(--surface); border-radius: 6px; cursor: pointer; box-shadow: var(--shadow-sm);
-  transition: transform .08s, box-shadow .08s;
-}
-.topic-admin button:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
-.topic-admin .t-main { flex: 1; min-width: 0; }
-.topic-admin .t-name { font-weight: 700; }
-.topic-admin .t-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topic-admin .off { font-size: 10.5px; font-weight: 800; background: var(--accent); color: var(--on-accent); border: 2px solid var(--ink); border-radius: 3px; padding: 0 5px; }
+.off { font-size: 10.5px; font-weight: 800; background: var(--accent); color: var(--on-accent); border: 2px solid var(--ink); border-radius: 3px; padding: 0 5px; }
 .admin-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.data-head { margin: 22px 0 6px; font-size: 15px; }
+.data-head.first { margin-top: 0; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px dashed var(--surface-2); font-size: 13.5px; font-weight: 600; }
+.setting-row select { padding: 6px 10px; border-radius: 6px; border: var(--bw) solid var(--ink); background: var(--surface-2); font-weight: 500; }
+.setting-list { margin-bottom: 6px; }
+.setting-list .off-val { color: var(--muted); font-weight: 500; font-size: 12.5px; text-align: right; }
+.topic-pill.paused, .person-row.paused { opacity: .6; }
+.data-actions { margin-top: 12px; }
+.data-actions a { text-decoration: none; }
 .follow-search { display: flex; gap: 10px; margin-bottom: 16px; }
 .follow-search { flex-wrap: wrap; }
 .follow-search input.org { flex: 0 1 220px; }
@@ -446,7 +445,6 @@ kbd {
 .candidate .c-sub { font-size: 12.5px; color: var(--muted); }
 .candidate .c-areas { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .candidate .c-areas b { color: var(--text); font-weight: 600; }
-.status-box { margin-top: 18px; padding: 12px 14px; border: 2px dashed var(--ink); border-radius: 6px; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
 .ok { color: var(--text); font-weight: 700; background: var(--good); padding: 0 5px; border-radius: 3px; }
 .warn { color: var(--on-accent); font-weight: 600; background: var(--accent); padding: 0 5px; border-radius: 3px; }
 .form label { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; font-weight: 700; font-size: 13px; }
@@ -752,7 +750,7 @@ textarea.notes.big { min-height: 280px; font-family: ui-monospace, Consolas, mon
 
 /* ---------- conferences ---------- */
 .conf-layout { display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); gap: 24px; align-items: start; }
-.conf-layout > .panel { position: sticky; top: 92px; max-height: calc(100vh - 114px); overflow: auto; }
+.conf-layout > .panel { position: sticky; top: 92px; max-height: calc(100vh / var(--zoom, 1) - 114px); overflow: auto; }
 .conf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 18px; }
 .conf-card { display: flex; flex-direction: column; background: var(--surface); border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px 8px; min-width: 0; }
 .conf-card.suggest { border-style: dashed; box-shadow: var(--shadow-sm); }

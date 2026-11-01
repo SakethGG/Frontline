@@ -29,18 +29,26 @@ const chats = new Map();  // paper id -> [{q, a}]
 
 // ---------------------------------------------------------------- prefs
 
+function setTextSize(v) {  // scales the whole UI; --zoom keeps viewport-height panels inside the window
+  const root = document.documentElement;
+  root.style.zoom = v === "1" ? "" : v;
+  root.style.setProperty("--zoom", root.style.zoom || 1);
+}
+
 try {
   const saved = JSON.parse(localStorage.getItem("frontline:prefs") || "{}");
   if (saved.sort) state.sort = saved.sort;
   if (typeof saved.relevantOnly === "boolean") state.relevantOnly = saved.relevantOnly;
   if (saved.theme) document.documentElement.dataset.theme = saved.theme;
+  if (saved.textSize) setTextSize(saved.textSize);
+  if (saved.section === "conferences") saved.section = "deadlines";  // renamed
   if (SECTIONS.includes(saved.section)) state.section = saved.section;
 } catch {}
 function savePrefs() {
   try {
     localStorage.setItem("frontline:prefs", JSON.stringify({
       sort: state.sort, relevantOnly: state.relevantOnly, theme: document.documentElement.dataset.theme || "",
-      section: state.section,
+      textSize: document.documentElement.style.zoom || "", section: state.section,
     }));
   } catch {}
 }
@@ -166,19 +174,6 @@ function showSection(name, { push = true } = {}) {
   s?.show?.();
 }
 
-// nav badges: new radar papers, deadlines within a week, tasks due/overdue
-async function refreshNavBadges() {
-  try {
-    const [confs, tasks] = await Promise.all([api("/api/conferences"), api("/api/tasks")]);
-    const now = new Date().toISOString(), week = new Date(Date.now() + 7 * 864e5).toISOString();
-    const soon = confs.flatMap((c) => c.deadlines).filter((d) => d.at >= now && d.at <= week).length;
-    const due = tasks.filter((t) => t.status !== "done" && t.status !== "future" && t.due && t.due <= todayISO()).length;
-    $("#navConf").textContent = soon || "";
-    $("#navConf").title = soon ? `${plural(soon, "deadline")} this week` : "";
-    $("#navTasks").textContent = due || "";
-    $("#navTasks").title = due ? `${plural(due, "task")} due today or overdue` : "";
-  } catch {}
-}
 async function patchPaper(p, body) {
   const updated = await api(`/api/papers/${p.id}`, { method: "PATCH", body });
   const i = state.items.findIndex((x) => x.id === p.id);
@@ -260,20 +255,21 @@ async function loadTopics() {
 
 function renderTopics() {
   const totalNew = state.topics.reduce((a, t) => a + t.unread_count, 0);
-  $("#navRadar").textContent = totalNew || "";
   const pill = (id, name, n, t) => `
-    <button class="topic-pill ${state.topicId === id ? "active" : ""} ${isPerson(t) ? "person" : ""}" data-topic="${id ?? ""}"
+    <button class="topic-pill ${state.topicId === id ? "active" : ""} ${isPerson(t) ? "person" : ""} ${t && !t.enabled ? "paused" : ""}" data-topic="${id ?? ""}"
       ${isPerson(t) ? `title="Papers from ${esc(name)}'s lab${t.profile?.institution ? ` · ${esc(t.profile.institution)}` : ""}"` : ""}>
-      ${isPerson(t) ? avatar(name, t.profile?.scholar_id) : ""}${esc(name)}${n ? `<span class="dot" title="${n} new">${n}</span>` : ""}
+      ${isPerson(t) ? avatar(name, t.profile?.scholar_id) : ""}${esc(name)}${t && !t.enabled ? ` <span class="off">paused</span>` : ""}${n ? `<span class="dot" title="${n} new">${n}</span>` : ""}
     </button>`;
-  const shown = state.topics.filter((t) => t.enabled || t.paper_count);
+  const shown = state.topics;
+  const current = state.topics.find((t) => t.id === state.topicId && !isPerson(t));
   // keyword topics in the pill row; followed researchers in the left sidebar
   $("#topics").innerHTML = (state.topics.length > 1 ? pill(null, "All", totalNew) : "") +
     shown.filter((t) => !isPerson(t)).map((t) => pill(t.id, t.name, t.unread_count, t)).join("") +
+    (current ? `<button class="topic-pill add" id="editTopicPill" title="Edit search phrases, subtopics, or pause/delete this topic">✎ Edit “${esc(current.name)}”</button>` : "") +
     `<button class="topic-pill add" id="addTopicPill" title="Add a research topic">+ Topic</button>`;
   const people = shown.filter(isPerson);
   $("#people").innerHTML = people.map((t) => `
-    <button class="person-row ${state.topicId === t.id ? "active" : ""}" data-topic="${t.id}"
+    <button class="person-row ${state.topicId === t.id ? "active" : ""} ${t.enabled ? "" : "paused"}" data-topic="${t.id}"
       title="Papers from ${esc(t.name)}'s lab${t.profile?.institution ? ` · ${esc(t.profile.institution)}` : ""}">
       ${avatar(t.name, t.profile?.scholar_id)}
       <span class="person-main"><span class="person-name">${esc(t.name)}</span>${t.profile?.institution ? `<span class="person-inst">${esc(t.profile.institution)}</span>` : ""}</span>
@@ -615,18 +611,16 @@ async function saveToLibrary(p, btn) {
 // ---------------------------------------------------------------- settings & topic editor
 
 function openSettings() {
-  $("#topicAdmin").innerHTML = state.topics.map((t) => `
-    <li><button data-edit="${t.id}">
-      ${isPerson(t) ? avatar(t.name, t.profile?.scholar_id) : ""}
-      <span class="t-main"><div class="t-name">${esc(t.name)} ${t.enabled ? "" : `<span class="off">paused</span>`}</div>
-      <div class="t-sub">${esc(isPerson(t) ? `Researcher · ${t.profile?.institution || "lab feed"}` : t.queries.join(" · "))}</div></span>
-      <span class="t-sub">${t.paper_count} papers ›</span>
-    </button></li>`).join("") || `<li class="hint">No topics yet.</li>`;
+  const root = document.documentElement;
+  $("#setTheme").value = root.dataset.theme || "";
+  $("#setTextSize").value = root.style.zoom || "1";
   const s = state.status || {};
-  $("#statusBox").innerHTML = `
-    <div>Summaries: ${s.ai ? `<span class="ok">${esc(s.provider)} (${esc(s.model)})</span>` : `<span class="warn">basic: ${esc(s.provider)} isn't set up${s.ai_reason ? ` (${esc(s.ai_reason)})` : ""}. Add ${s.provider === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"} to .env and restart</span>`}</div>
-    <div>Phone / email alerts: ${s.channels?.length ? `<span class="ok">${s.channels.join(", ")}</span>` : "off — set NTFY_TOPIC or SMTP_* in .env"}</div>
-    <div>Automatic sweeps: ${s.auto_sweep_hours > 0 ? `<span class="ok">every ${s.auto_sweep_hours} h</span>` : "off — set FRONTLINE_AUTO_SWEEP_HOURS in .env"}</div>`;
+  const envKey = s.provider === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
+  const row = (name, on, value) => `<div class="setting-row"><span>${name}</span><span class="${on ? "ok" : "off-val"}">${value}</span></div>`;
+  $("#statusBox").innerHTML =
+    row("AI summaries", s.ai, s.ai ? `${esc(s.provider)} · ${esc(s.model)}` : `Off: add ${envKey}`) +
+    row("Phone / email alerts", s.channels?.length, s.channels?.length ? esc(s.channels.join(", ")) : "Off: set NTFY_TOPIC or SMTP_*") +
+    row("Automatic sweeps", s.auto_sweep_hours > 0, s.auto_sweep_hours > 0 ? `Every ${s.auto_sweep_hours} h` : "Off: set FRONTLINE_AUTO_SWEEP_HOURS");
   $("#settingsModal").showModal();
 }
 
@@ -662,7 +656,6 @@ async function saveTopic(e) {
     const id = f.dataset.id;
     const t = await api(id ? `/api/topics/${id}` : "/api/topics", { method: id ? "PUT" : "POST", body });
     $("#topicModal").close();
-    $("#settingsModal").close();
     toast(id ? "Topic saved" : "Topic added — press Sweep now to find papers", 3500);
     Object.assign(state, { topicId: t.id, subtopic: null });
     await refreshAll();
@@ -675,7 +668,6 @@ async function deleteTopic() {
   if (!t || !confirm(`Delete “${t.name}” and its ${t.paper_count} saved papers?`)) return;
   await api(`/api/topics/${id}`, { method: "DELETE" });
   $("#topicModal").close();
-  $("#settingsModal").close();
   if (state.topicId === id) state.topicId = null;
   await refreshAll();
 }
@@ -764,7 +756,6 @@ async function follow(openalexId, btn, scholarId) {
     const body = { openalex_id: openalexId, ...(scholarId ? { scholar_id: scholarId } : {}) };
     const { topic, sweep_started } = await api("/api/researchers", { method: "POST", body });
     $("#followModal").close();
-    $("#settingsModal").close();
     toast(sweep_started
       ? `Following ${topic.name}. Fetching their lab's papers from the last ${Math.round(topic.lookback_days / 30)} months…`
       : `Following ${topic.name}. Their papers arrive with the sweep that's running now or the next one.`, 5000);
@@ -835,6 +826,33 @@ function go(changes) {
 function bind() {
   $("#sweepBtn").onclick = startSweep;
   $("#settingsBtn").onclick = openSettings;
+  $("#backupBtn").onclick = () => {
+    const prefs = {};
+    for (const k of ["frontline:prefs", "frontline:ui"]) {
+      try { prefs[k] = JSON.parse(localStorage.getItem(k) || "null"); } catch {}
+    }
+    $("#backupBtn").href = `/api/backup?pdfs=${$("#backupPdfs").checked}&prefs=${encodeURIComponent(JSON.stringify(prefs))}`;
+    toast("Preparing your backup…", 4000);
+  };
+  $("#restoreBtn").onclick = () => $("#restoreFile").click();
+  $("#restoreFile").onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file || !confirm(`Replace everything in Frontline with the backup “${file.name}”?\nWhat's here now will be overwritten.`)) return;
+    toast("Restoring…", 60000);
+    try {
+      const res = await fetch("/api/backup/restore", { method: "POST", body: file });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(r.detail || res.statusText);
+      for (const [k, v] of Object.entries(r.ui_prefs || {})) {
+        if (v) try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+      }
+      const lib = r.pdfs ? ` ${r.pdfs} PDF${r.pdfs === 1 ? "" : "s"} put in ${r.library_dir}.`
+        : r.library_dir ? "" : " Pick your library folder again in Library.";
+      alert(`Restored.${lib}`);
+      location.reload();
+    } catch (err) { toast(`Restore failed: ${err.message}`, 6000); }
+  };
   $("#helpBtn").onclick = () => $("#helpModal").showModal();
   $("#themeBtn").onclick = () => {
     const root = document.documentElement;
@@ -842,9 +860,19 @@ function bind() {
     root.dataset.theme = dark ? "light" : "dark";
     savePrefs();
   };
+  $("#setTheme").onchange = (e) => {
+    if (e.target.value) document.documentElement.dataset.theme = e.target.value;
+    else delete document.documentElement.dataset.theme;
+    savePrefs();
+  };
+  $("#setTextSize").onchange = (e) => {
+    setTextSize(e.target.value);
+    savePrefs();
+  };
 
   $("#topics").onclick = (e) => {
     if (e.target.closest("#addTopicPill")) return openTopicEditor(null);
+    if (e.target.closest("#editTopicPill")) return openTopicEditor(state.topics.find((t) => t.id === state.topicId));
     if (e.target.closest("#followPill")) return openFollow();
     const b = e.target.closest("[data-topic]");
     if (b) go({ topicId: b.dataset.topic ? +b.dataset.topic : null, subtopic: null });
@@ -932,23 +960,12 @@ function bind() {
   });
   $("#askForm").onsubmit = (e) => { e.preventDefault(); ask($("#askInput").value.trim()); };
 
-  // settings & topics
-  $("#addTopicBtn").onclick = () => openTopicEditor(null);
-  $("#topicAdmin").onclick = (e) => {
-    const b = e.target.closest("[data-edit]");
-    if (!b) return;
-    const t = state.topics.find((x) => x.id === +b.dataset.edit);
-    // researchers have no search phrases to edit; open their feed (pause / unfollow live there)
-    if (isPerson(t)) { $("#settingsModal").close(); go({ topicId: t.id, subtopic: null }); }
-    else openTopicEditor(t);
-  };
-  $("#followBtn").onclick = openFollow;
   $("#followForm").onsubmit = (e) => { e.preventDefault(); searchResearchers(); };
   $("#candidates").onclick = (e) => {
     const f = e.target.closest("[data-follow]");
     if (f) return follow(f.dataset.follow, f, f.dataset.scholar);
     const v = e.target.closest("[data-view-feed]");
-    if (v) { $("#followModal").close(); $("#settingsModal").close(); go({ topicId: +v.dataset.viewFeed, subtopic: null }); }
+    if (v) { $("#followModal").close(); go({ topicId: +v.dataset.viewFeed, subtopic: null }); }
   };
   $("#profile").onclick = (e) => {
     const a = e.target.closest("[data-profile]")?.dataset.profile;
@@ -1007,8 +1024,6 @@ window.addEventListener("DOMContentLoaded", async function init() {
   // links from notifications (?sweep= / ?paper=) always land on the Radar
   showSection(sweepParam || params.get("paper") ? "radar" : SECTIONS.includes(fromHash) ? fromHash : state.section);
   api("/api/library/radar-ids").then((ids) => ids.forEach((i) => savedToLibrary.add(i))).catch(() => {});
-  refreshNavBadges();
-  setInterval(refreshNavBadges, 5 * 60 * 1000);
   await loadTopics();
   await refreshCounts();
   // land on "New" when there's something new, otherwise show everything

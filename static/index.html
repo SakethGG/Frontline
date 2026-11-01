@@ -30,11 +30,11 @@
     </div>
     <nav class="sections" id="sectionNav" aria-label="Sections">
       <a class="section-link" href="#home" data-section="home">Home</a>
-      <a class="section-link" href="#radar" data-section="radar">Radar <span class="badge" id="navRadar"></span></a>
+      <a class="section-link" href="#radar" data-section="radar">Radar</a>
       <a class="section-link" href="#library" data-section="library">Library</a>
       <a class="section-link" href="#deadlines" data-section="deadlines">Deadlines</a>
       <a class="section-link" href="#ideas" data-section="ideas">Ideas</a>
-      <a class="section-link" href="#projects" data-section="projects">Projects <span class="badge" id="navTasks"></span></a>
+      <a class="section-link" href="#projects" data-section="projects">Projects</a>
     </nav>
     <div class="search-wrap">
       <span class="search-icon" aria-hidden="true">⌕</span>
@@ -44,7 +44,7 @@
     <div class="top-actions">
       <button class="icon-btn" id="helpBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <button class="icon-btn" id="themeBtn" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
-      <button class="icon-btn" id="settingsBtn" title="Topics & settings" aria-label="Topics and settings">⚙</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
       <button class="sweep-btn" id="sweepBtn" title="Find new papers now">
         <span class="sweep-icon">⟳</span><span id="sweepLabel">Sweep now</span>
       </button>
@@ -442,20 +442,42 @@
     </form>
   </dialog>
 
-  <!-- Settings: topic list -->
+  <!-- Settings: appearance, features, your data -->
   <dialog class="modal" id="settingsModal">
     <div class="modal-head">
-      <h2>Your topics</h2>
+      <h2>Settings</h2>
       <button class="icon-btn" data-close aria-label="Close">✕</button>
     </div>
     <div class="modal-body">
-      <p class="hint">Each topic is searched on every sweep. Click a topic to edit its search phrases and subtopics.</p>
-      <ul class="topic-admin" id="topicAdmin"></ul>
-      <div class="admin-actions">
-        <button class="primary-btn" id="addTopicBtn">+ Add a topic</button>
-        <button class="ghost-btn" id="followBtn">+ Follow a researcher</button>
+      <h3 class="data-head first">Appearance</h3>
+      <div class="setting-row">
+        <span>Theme</span>
+        <select id="setTheme" aria-label="Theme">
+          <option value="">Match my computer</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
       </div>
-      <div class="status-box" id="statusBox"></div>
+      <div class="setting-row">
+        <span>Text size</span>
+        <select id="setTextSize" aria-label="Text size">
+          <option value="0.9">Small</option>
+          <option value="1">Default</option>
+          <option value="1.1">Large</option>
+          <option value="1.25">Extra large</option>
+        </select>
+      </div>
+      <h3 class="data-head">Features</h3>
+      <p class="hint">These are set in the <code>.env</code> file. Restart Frontline after changing it.</p>
+      <div class="setting-list" id="statusBox"></div>
+      <h3 class="data-head">Your data</h3>
+      <p class="hint">Frontline has no account or cloud. To move to a new computer, back up here and restore the file there: topics, researchers, papers, summaries, stars, library, ideas, projects, tasks, deadlines and conferences come back exactly as they were. API keys in <code>.env</code> aren't included: copy that file yourself.</p>
+      <label class="inline"><input type="checkbox" id="backupPdfs"> Include library PDFs <small class="hint inline">(only needed if they aren't in a synced folder like Google Drive)</small></label>
+      <div class="admin-actions data-actions">
+        <a class="primary-btn" id="backupBtn" href="/api/backup" download>⬇ Back up to a file</a>
+        <button class="ghost-btn" id="restoreBtn">⬆ Restore from a backup…</button>
+        <input type="file" id="restoreFile" accept=".frontline,.zip,.db" hidden>
+      </div>
     </div>
   </dialog>
 
