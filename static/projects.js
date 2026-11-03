@@ -49,6 +49,9 @@
     $("#projCountFuture").textContent = scoped.filter((t) => t.status === "future").length || "";
     const sel = $("#taskProj");
     sel.hidden = typeof P.sel === "number";
+    const cur = project(), chip = $("#taskProjName");
+    chip.hidden = !cur;
+    if (cur) chip.innerHTML = `<span class="color-dot" style="background:${cur.color || "var(--ink)"}"></span>${esc(cur.name)}`;
     sel.innerHTML = `<option value="">Inbox</option>` + P.projects.filter((p) => p.status !== "done").map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
     $("#taskTitle").placeholder = P.view === "future" ? "Add a future task: something for later… (Enter)" : "Add a mission… (Enter)";
     if (P.view === "todo") renderBoard(scoped.filter(matches));

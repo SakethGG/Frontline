@@ -823,6 +823,11 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .task-add { display: flex; gap: 8px; flex: 1 1 520px; justify-content: flex-end; flex-wrap: wrap; }
 .task-add input#taskTitle { flex: 1 1 220px; width: auto; }
 .task-add input[type=date] { width: auto; flex: none; }
+.task-proj {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; border: var(--bw) solid var(--ink);
+  background: var(--surface); font-weight: 600; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.task-proj[hidden] { display: none; }
 .task-card {
   display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: var(--bw) solid var(--ink); border-radius: 6px;
   padding: 9px 10px; box-shadow: var(--shadow-sm); cursor: grab; transition: transform .08s, box-shadow .08s;
