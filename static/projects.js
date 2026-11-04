@@ -182,6 +182,30 @@
     Quest.celebrate(before, Quest.stats(P.tasks), at);
   }
 
+  // Due dates are optional: empty fields read "No date", and a small × inside the field clears a set date.
+  function addDateClear(input) {
+    const wrap = document.createElement("span");
+    wrap.className = "date-wrap no-date";
+    input.replaceWith(wrap);
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "date-clear";
+    x.textContent = "×";
+    x.title = x.ariaLabel = "No date";
+    x.onclick = () => { input.value = ""; syncDate(input); };
+    wrap.append(input, x);
+    input.addEventListener("input", () => syncDate(input));
+    input.addEventListener("change", () => syncDate(input));
+    syncDate(input);
+  }
+  function syncDate(input) {
+    const wrap = input.parentElement;
+    if (!wrap?.classList.contains("date-wrap")) return;
+    // Pin the quick-add box to its plain width before the × takes room, so it never grows.
+    if (input.value && !wrap.style.width && !input.closest(".form") && input.offsetWidth) wrap.style.width = `${input.offsetWidth}px`;
+    wrap.classList.toggle("no-date", !input.value);
+  }
+
   function openTask(t) {
     P.editTask = t.id;
     const f = $("#taskForm");
@@ -190,6 +214,7 @@
     f.status.value = t.status;
     f.priority.value = t.priority;
     f.due.value = t.due;
+    syncDate(f.due);
     f.project_id.innerHTML = `<option value="">Inbox (no project)</option>` + P.projects.map((p) => `<option value="${p.id}" ${p.id === t.project_id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
     $("#taskModal").showModal();
   }
@@ -294,6 +319,7 @@
       } catch (err) { return toast(err.message); }
       $("#taskTitle").value = "";
       $("#taskDue").value = "";
+      syncDate($("#taskDue"));
       $("#taskPrio").value = "1";
       await reload();
       $("#taskTitle").focus();
@@ -338,6 +364,8 @@
     });
 
     $("#taskForm").onsubmit = saveTask;
+    addDateClear($("#taskDue"));
+    addDateClear($("#taskForm").due);
     $("#tkDelete").onclick = async () => {
       await api(`/api/tasks/${P.editTask}`, { method: "DELETE" });
       $("#taskModal").close();
