@@ -823,6 +823,22 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .task-add { display: flex; gap: 8px; flex: 1 1 520px; justify-content: flex-end; flex-wrap: wrap; }
 .task-add input#taskTitle { flex: 1 1 220px; width: auto; }
 .task-add input[type=date] { width: auto; flex: none; }
+.date-wrap { position: relative; display: inline-flex; flex: none; }
+.form .date-wrap { display: flex; }
+.task-add .date-wrap input[type=date], .form .date-wrap input[type=date] { width: 100%; }
+.date-wrap:not(.no-date) input[type=date] { padding-right: 24px; }
+.date-wrap.no-date input[type=date]:not(:focus)::-webkit-datetime-edit { opacity: 0; }
+.date-wrap.no-date:not(:focus-within)::after {
+  content: "No date"; position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-weight: 500; pointer-events: none;
+}
+.date-clear {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 1px 4px; border-radius: 4px;
+}
+.date-clear:hover { color: var(--text, inherit); }
+.date-wrap.no-date .date-clear { display: none; }
 .task-proj {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; border: var(--bw) solid var(--ink);
   background: var(--surface); font-weight: 600; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
