@@ -148,6 +148,7 @@ class ProjectIn(BaseModel):
     status: str | None = Field(None, pattern="^(active|paused|done)$")
     conference_id: int | None = None
     idea_id: int | None = None
+    notes: list[QuickNote] | None = None
     clear_conference: bool = False
 
 

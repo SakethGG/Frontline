@@ -43,6 +43,7 @@
     $("#questHud").innerHTML = Quest.hud(P.tasks);
     renderSide();
     renderHead();
+    renderNotes();
     $$("#projTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.pview === P.view));
     const scoped = P.tasks.filter(inScope);
     $("#projCountTodo").textContent = openCount(scoped) || "";
@@ -107,6 +108,59 @@
           <p class="hint">${done} of ${plural(tasks.length, "task")} done</p>` : ""}
       </div>
       <div class="head-actions"><button class="ghost-btn" id="projEdit">Edit project</button></div>`;
+  }
+
+  // ---------------------------------------------------------------- quick notes
+  // Small sticky notes in the right-hand sidebar, one list per project ({text, color, at}). Hidden for All tasks / Inbox.
+
+  const NOTE_COLORS = ["#fff27a", "#ff8b7b", "#8fe3a4", "#7cc4ff", "#c9a7ff", "#ffb86b"];
+  const nextColor = (p) => NOTE_COLORS[(p.notes || []).length % NOTE_COLORS.length];
+  const fitNote = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };
+  let notesFor = null, saveTimer = null;
+
+  // the project's notes with any unsaved typing from the sidebar
+  function readNotes(p) {
+    const boxes = $$("#projNotes [data-qn]");
+    return (p.notes || []).map((n, k) => {
+      const box = boxes.find((b) => +b.dataset.qn === k);
+      return box && box.value !== n.text ? { ...n, text: box.value } : n;
+    });
+  }
+
+  async function saveNotes(p, notes, rerender = true) {
+    clearTimeout(saveTimer);
+    p.notes = notes;
+    try {
+      const updated = await api(`/api/projects/${p.id}`, { method: "PATCH", body: { notes } });
+      p.notes = updated.notes;
+    } catch (err) { toast(err.message); }
+    if (rerender) renderNotes(true);
+  }
+
+  function renderNotes(force = false) {
+    const p = project(), aside = $(".proj-notes");
+    aside.hidden = !p || state.section !== "projects";
+    if (!p) { notesFor = null; return; }
+    // don't yank the textarea out from under someone typing when the board re-renders
+    if (!force && notesFor === p.id && aside.contains(document.activeElement)) return;
+    notesFor = p.id;
+    const notes = p.notes || [];
+    $("#projNotesCount").textContent = notes.length || "";
+    $("#projNotes").innerHTML = `<div class="qnotes">${notes.map((n, k) => `
+        <div class="qnote" style="--qn:${esc(n.color || NOTE_COLORS[k % NOTE_COLORS.length])}">
+          <textarea data-qn="${k}" rows="2" aria-label="Note">${esc(n.text)}</textarea>
+          <div class="qn-foot">
+            <span>${n.at ? timeAgo(n.at) : ""}</span>
+            <span class="spacer"></span>
+            <button class="qn-color" data-qn-color="${k}" title="Change colour" aria-label="Change colour"></button>
+            <button class="icon-btn tiny" data-qn-del="${k}" title="Delete note" aria-label="Delete note">✕</button>
+          </div>
+        </div>`).join("")}
+        <form class="qnote add" data-qn-add style="--qn:${nextColor(p)}">
+          <textarea rows="2" placeholder="+ Jot a note (Enter to add, Shift+Enter for a new line)" aria-label="New note"></textarea>
+        </form>
+      </div>`;
+    $$("#projNotes textarea").forEach(fitNote);
   }
 
   function taskCard(t, showProject) {
@@ -294,6 +348,41 @@
       P.showAllDone = false;
       render();
     };
+    const notesEl = $("#projNotes");
+    notesEl.addEventListener("input", (e) => {
+      if (!e.target.matches("textarea")) return;
+      fitNote(e.target);
+      const p = project();
+      if (!p || e.target.dataset.qn == null) return;
+      clearTimeout(saveTimer);
+      const notes = readNotes(p);
+      saveTimer = setTimeout(() => saveNotes(p, notes, false), 500);
+    });
+    notesEl.addEventListener("keydown", async (e) => {
+      const p = project();
+      if (!p || e.key !== "Enter" || e.shiftKey || !e.target.closest("[data-qn-add]")) return;
+      e.preventDefault();
+      const text = e.target.value.trim();
+      if (!text) return;
+      await saveNotes(p, [...readNotes(p), { text, color: nextColor(p), at: new Date().toISOString() }]);
+      $("#projNotes [data-qn-add] textarea")?.focus();
+    });
+    notesEl.addEventListener("submit", (e) => e.preventDefault());
+    notesEl.addEventListener("click", async (e) => {
+      const p = project();
+      if (!p) return;
+      const del = e.target.closest("[data-qn-del]"), col = e.target.closest("[data-qn-color]");
+      if (del) {
+        const notes = readNotes(p), k = +del.dataset.qnDel;
+        if (notes[k].text.trim() && !confirm("Delete this note?")) return;
+        return saveNotes(p, notes.filter((_, j) => j !== k));
+      }
+      if (col) {
+        const notes = readNotes(p), k = +col.dataset.qnColor, at = NOTE_COLORS.indexOf(notes[k].color);
+        return saveNotes(p, notes.map((n, j) => (j === k ? { ...n, color: NOTE_COLORS[(at + 1) % NOTE_COLORS.length] } : n)));
+      }
+    });
+
     $("#projHead").onclick = (e) => {
       if (e.target.closest("#projEdit")) return openProject(project());
       if (e.target.closest("#projNewHead")) return openProject(null);

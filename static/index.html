@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=18">
+  <link rel="stylesheet" href="/static/style.css?v=19">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -203,6 +203,11 @@
     </div>
     <div id="projBody"></div>
   </main>
+  <!-- shown only while a specific project is selected (projects.js); data-for never matches a section, so leaving Projects hides it -->
+  <aside class="people proj-notes" aria-label="Project notes" data-for="projects-notes" hidden>
+    <h2 class="people-title">Notes <span class="hint inline" id="projNotesCount"></span></h2>
+    <div class="people-list" id="projNotes"></div>
+  </aside>
 
   <main class="page" data-section="radar">
     <!-- 2. Briefing: one compact line, expandable -->
@@ -569,6 +574,6 @@
   <script src="/static/library.js?v=5"></script>
   <script src="/static/conferences.js?v=2"></script>
   <script src="/static/ideas.js?v=1"></script>
-  <script src="/static/projects.js?v=2"></script>
+  <script src="/static/projects.js?v=3"></script>
 </body>
 </html>

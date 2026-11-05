@@ -480,6 +480,9 @@ kbd {
   .people-list { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding-bottom: 10px; }
   .person-row { width: auto; max-width: 260px; }
   .people-empty { align-self: center; white-space: nowrap; }
+  .layout > .people.proj-notes { grid-column: 1; margin-top: 0; margin-bottom: 40px; }
+  .proj-notes .people-list { flex-direction: column; overflow: visible; }
+  .layout > .proj-notes .qnotes { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
 @media (max-width: 760px) {
   .topbar { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
@@ -820,6 +823,10 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .proj-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .proj-chips .chip { white-space: normal; text-align: left; max-width: 100%; }
 .proj-title .hint { margin: 0; font-size: 12px; }
+/* project quick notes: right-hand sidebar, mirrors the project list on the left */
+.people.proj-notes { grid-column: 3; justify-self: end; }
+.proj-notes .people-title { display: flex; align-items: center; gap: 8px; }
+.proj-notes .qnotes { grid-template-columns: minmax(0, 1fr); }
 .task-add { display: flex; gap: 8px; flex: 1 1 520px; justify-content: flex-end; flex-wrap: wrap; }
 .task-add input#taskTitle { flex: 1 1 220px; width: auto; }
 .task-add input[type=date] { width: auto; flex: none; }

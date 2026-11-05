@@ -175,6 +175,9 @@ MIGRATIONS = {
     "ideas": {
         "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], beside the long-form body
     },
+    "projects": {
+        "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], in the right-hand sidebar
+    },
 }
 
 TOPIC_JSON = ("queries", "subtopics", "arxiv_categories", "author_ids", "profile")
@@ -511,7 +514,7 @@ RECORD_JSON = {
     "library": ("authors", "tags"),
     "conferences": ("tags", "deadlines"),
     "ideas": ("tags", "papers", "milestones", "notes"),
-    "projects": (),
+    "projects": ("notes",),
     "tasks": (),
     "deadlines": (),
 }
