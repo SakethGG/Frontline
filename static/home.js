@@ -27,7 +27,7 @@
     const focus = open.filter((t) => t.status === "doing" || (t.due && t.due <= new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)) || t.priority === 2)
       .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || b.priority - a.priority).slice(0, 7);
     const recent = lib.filter((r) => !r.missing).sort((a, b) => b.added_at.localeCompare(a.added_at)).slice(0, 4);
-    const recentIdeas = ideas.slice(0, 4);
+    const recentIdeas = [...ideas].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);  // newest first here
 
     const panel = (title, link, body, extra = "") => `
       <section class="panel home-panel">

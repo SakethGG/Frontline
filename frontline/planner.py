@@ -10,7 +10,7 @@ from .summarizer import API_ERRORS, Refused, explain, summarizer
 
 router = APIRouter(prefix="/api")
 
-IDEA_KINDS = "^(idea|proposal|roadmap)$"
+IDEA_KINDS = "^(idea|project|proposal|roadmap)$"
 IDEA_STATUSES = "^(spark|exploring|developing|active|parked)$"
 TASK_STATUSES = "^(todo|doing|done|future)$"
 PROJECT_COLORS = ["#ff8b7b", "#fff27a", "#8fe3a4", "#7cc4ff", "#c9a7ff", "#ffb86b", "#5ee6d0", "#f78fb3"]  # as in projects.js
@@ -58,7 +58,7 @@ class IdeaIn(BaseModel):
 
 @router.get("/ideas")
 def ideas():
-    return db.list_records("ideas", order="pinned DESC, updated_at DESC")
+    return db.list_records("ideas", order="pinned DESC, created_at ASC, id ASC")  # oldest first
 
 
 @router.post("/ideas")

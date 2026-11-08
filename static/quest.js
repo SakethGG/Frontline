@@ -4,20 +4,30 @@ const Quest = (() => {
   const XP = { 0: 10, 1: 20, 2: 40 };     // by priority: low / normal / high
   const ON_TIME = 10;                      // finished on or before its due date
   const GOAL_BONUS = 30;                   // per day the daily goal was met
-  const RANKS = ["Recruit", "Scout", "Ranger", "Specialist", "Veteran", "Captain", "Commander", "Vanguard", "Legend"];
-  const DIFFICULTY = { 0: "Easy", 1: "Standard", 2: "Boss" };
-  const BADGES = [
-    ["first", "🎖", "First mission", "Complete your first mission", (s) => s.done >= 1],
-    ["ten", "🔟", "Ten down", "Complete 10 missions", (s) => s.done >= 10],
-    ["fifty", "🏅", "Fifty strong", "Complete 50 missions", (s) => s.done >= 50],
-    ["century", "💯", "Centurion", "Complete 100 missions", (s) => s.done >= 100],
-    ["boss", "🐉", "Boss slayer", "Defeat 5 boss (high-priority) missions", (s) => s.bosses >= 5],
-    ["punctual", "⏱", "Right on time", "Finish 10 missions by their due date", (s) => s.onTime >= 10],
-    ["blitz", "⚡", "Blitz", "Complete 5 missions in one day", (s) => s.bestDay >= 5],
-    ["streak3", "🔥", "On fire", "Keep a 3-day streak", (s) => s.bestStreak >= 3],
-    ["streak7", "☄️", "Unstoppable", "Keep a 7-day streak", (s) => s.bestStreak >= 7],
-    ["streak30", "👑", "Iron will", "Keep a 30-day streak", (s) => s.bestStreak >= 30],
+  // One military rank per level ([name, abbreviation]); past the last one you stay Commander.
+  const RANKS = [
+    ["Private", "PVT"], ["Private First Class", "PFC"], ["Lance Corporal", "LCPL"], ["Corporal", "CPL"],
+    ["Sergeant", "SGT"], ["Staff Sergeant", "SSGT"], ["Gunnery Sergeant", "GYSGT"], ["Master Sergeant", "MSGT"],
+    ["First Sergeant", "1STSGT"], ["Sergeant Major", "SGTMAJ"], ["Second Lieutenant", "2NDLT"], ["First Lieutenant", "1STLT"],
+    ["Captain", "CAPT"], ["Major", "MAJ"], ["Lieutenant Colonel", "LTCOL"], ["Colonel", "COL"],
+    ["Brigadier General", "BGEN"], ["Major General", "MAJGEN"], ["Lieutenant General", "LTGEN"], ["General", "GEN"],
+    ["Commander", "CDR"],
   ];
+  const DIFFICULTY = { 0: "Easy", 1: "Standard", 2: "Boss" };
+  // [key, icon, name, description, stat it tracks, target, medal tier]
+  const BADGES = [
+    ["first", "🎖️", "First Deployment", "Complete your first mission.", "done", 1, "bronze"],
+    ["ten", "🪖", "Fireteam", "Complete 10 missions.", "done", 10, "bronze"],
+    ["fifty", "🏅", "Platoon Leader", "Complete 50 missions.", "done", 50, "silver"],
+    ["century", "🦅", "Centurion", "Complete 100 missions.", "done", 100, "gold"],
+    ["boss", "🎯", "HVT Hunter", "Take down 5 high-priority (boss) missions.", "bosses", 5, "gold"],
+    ["punctual", "⏱️", "Zero Hour", "Finish 10 missions on or before their due date.", "onTime", 10, "silver"],
+    ["blitz", "⚡", "Blitzkrieg", "Complete 5 missions in a single day.", "bestDay", 5, "silver"],
+    ["streak3", "🔥", "Tour of Duty", "Complete a mission 3 days in a row.", "bestStreak", 3, "bronze"],
+    ["streak7", "🛡️", "Iron Discipline", "Complete a mission 7 days in a row.", "bestStreak", 7, "silver"],
+    ["streak30", "⭐", "Legend", "Complete a mission 30 days in a row.", "bestStreak", 30, "gold"],
+  ].map(([key, icon, name, how, stat, target, tier]) => ({ key, icon, name, how, stat, target, tier }));
+  const TIER = { bronze: "Bronze medal", silver: "Silver medal", gold: "Gold medal" };
 
   const localDay = (iso) => { const d = new Date(iso); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
   const shiftDay = (day, n) => new Date(new Date(day + "T12:00:00Z").getTime() + n * 864e5).toISOString().slice(0, 10);
@@ -60,11 +70,11 @@ const Quest = (() => {
     let level = 1, rest = xp;
     while (rest >= levelCost(level)) { rest -= levelCost(level); level++; }
     const s = {
-      xp, level, into: rest, need: levelCost(level), rank: RANKS[Math.min(RANKS.length - 1, Math.floor((level - 1) / 2))],
+      xp, level, into: rest, need: levelCost(level), rank: RANKS[Math.min(RANKS.length - 1, level - 1)][0], rankAbbr: RANKS[Math.min(RANKS.length - 1, level - 1)][1],
       done: done.length, bosses, onTime, today: perDay[today] || 0, goal: g, streak, bestStreak,
       bestDay: Math.max(0, ...Object.values(perDay)), litToday: !!perDay[today],
     };
-    s.badges = BADGES.filter((b) => b[4](s)).map((b) => b[0]);
+    s.badges = BADGES.filter((b) => s[b.stat] >= b.target).map((b) => b.key);
     return s;
   }
 
@@ -81,7 +91,7 @@ const Quest = (() => {
       <div class="q-level" title="${s.xp} XP total">
         <span class="q-lvl">LV<b>${s.level}</b></span>
         <div class="q-xp">
-          <div class="q-rank">${esc(s.rank)} <small>${s.into} / ${s.need} XP</small></div>
+          <div class="q-rank"><span><span class="q-abbr">${esc(s.rankAbbr)}</span><span class="q-rank-name">${esc(s.rank)}</span></span> <small>${s.into} / ${s.need} XP</small></div>
           <div class="q-bar"><span style="width:${pct}%"></span></div>
         </div>
       </div>`;
@@ -99,9 +109,22 @@ const Quest = (() => {
     return `<div class="quest-hud">
       ${level}${daily}${streak}
       <div class="q-stat" title="XP waiting in your open missions"><span class="q-flame">💰</span><span><span class="q-label">Bounty</span>${bounty} XP up for grabs</span></div>
-      <div class="q-badges" aria-label="Badges">${BADGES.map(([k, icon, name, how]) =>
-        `<span class="q-badge ${s.badges.includes(k) ? "got" : ""}" title="${esc(name)}: ${esc(how)}${s.badges.includes(k) ? " ✓" : ""}">${icon}</span>`).join("")}</div>
+      <div class="q-badges" aria-label="Badges">${BADGES.map((b, i) => badge(b, s, i >= BADGES.length / 2)).join("")}</div>
     </div>`;
+  }
+
+  // A medal on a ribbon; hovering (or focusing) it shows a card with what it's for and your progress.
+  function badge(b, s, alignRight) {
+    const got = s.badges.includes(b.key), have = Math.min(s[b.stat], b.target);
+    return `<span class="q-badge ${b.tier} ${got ? "got" : ""}" tabindex="0" aria-label="${esc(b.name)}: ${esc(b.how)} ${got ? "Earned" : `${have} of ${b.target}`}">
+      <span class="q-ribbon"></span><span class="q-medal">${b.icon}</span>
+      <span class="q-tip ${alignRight ? "right" : ""}" role="tooltip">
+        <span class="q-tip-head"><span class="q-tip-icon">${b.icon}</span><span><b>${esc(b.name)}</b><small class="q-tier">${TIER[b.tier]}</small></span></span>
+        <span class="q-tip-how">${esc(b.how)}</span>
+        ${got ? `<span class="q-tip-done">✓ Earned</span>`
+          : `<span class="q-tip-bar"><i style="width:${Math.round((100 * have) / b.target)}%"></i></span><span class="q-tip-prog">🔒 ${have} / ${b.target}</span>`}
+      </span>
+    </span>`;
   }
 
   // Small "+20 XP · Boss" chip for a mission card
@@ -155,9 +178,9 @@ const Quest = (() => {
     const x = at?.x ?? innerWidth / 2, y = at?.y ?? innerHeight / 2;
     burst(x, y);
     float(x, y, `+${gained} XP`);
-    const news = BADGES.filter((b) => after.badges.includes(b[0]) && !before.badges.includes(b[0]));
-    if (after.level > before.level) banner(`Level ${after.level}!`, after.rank !== before.rank ? `Promoted to ${after.rank}` : `${after.rank} · keep going`);
-    else if (news.length) banner(`${news[0][1]} ${news[0][2]}`, "Badge unlocked");
+    const news = BADGES.filter((b) => after.badges.includes(b.key) && !before.badges.includes(b.key));
+    if (after.level > before.level) banner(after.rank !== before.rank ? "Promoted!" : `Level ${after.level}!`, after.rank !== before.rank ? `${after.rank} (${after.rankAbbr}) · Level ${after.level}` : `${after.rank} · keep going`);
+    else if (news.length) banner(`${news[0].icon} ${news[0].name}`, `${TIER[news[0].tier]} earned`);
     else if (after.today >= after.goal && before.today < before.goal) banner("Daily goal cleared!", `+${GOAL_BONUS} XP bonus`);
     else if (after.streak > before.streak && after.streak > 1) toast(`🔥 ${after.streak}-day streak!`);
     else toast(["Mission complete ✓", "Nice work ✓", "Target down ✓", "On to the next one ✓"][Math.floor(Math.random() * 4)]);

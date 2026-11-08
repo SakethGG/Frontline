@@ -7,9 +7,10 @@
     layout: pref("ideas.layout") || "grid", openId: null, preview: false,
   };
   Sections.ideas = I;
-  const KINDS = { idea: "💡 Idea", proposal: "📝 Proposal", roadmap: "🗺 Roadmap" };
+  const KINDS = { idea: "💡 Idea", project: "🚀 Project", proposal: "📝 Proposal", roadmap: "🗺 Roadmap" };
   const STATUSES = { spark: "Spark", exploring: "Exploring", developing: "Developing", active: "Active", parked: "Parked" };
   const TEMPLATES = {
+    project: "## What I want to build\n\n## Why it's worth doing\n\n## First steps\n- \n",
     proposal: "## Problem\nWhat's broken or missing, and for whom?\n\n## Hypothesis\n\n## Approach\n\n## Evaluation\nPlatforms / datasets, baselines, metrics.\n\n## Risks\n\n## Resources & collaborators\n",
     roadmap: "## Goal\nWhere this should be in 6–12 months.\n\n## Why now\n\n## Open questions\n",
   };
@@ -42,6 +43,9 @@
 
   // ---------------------------------------------------------------- list
 
+  // Every idea carries the moment it was captured; the list runs oldest → newest (pinned ones stay on top).
+  const stamp = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const byAge = (a, b) => (b.pinned - a.pinned) || a.created_at.localeCompare(b.created_at) || a.id - b.id;
   const plain = (s) => String(s || "").replace(/^#+\s.*$/gm, "").replace(/[*_>`#-]/g, "").replace(/\s+/g, " ").trim();
   const matches = (i) => (!I.kind || i.kind === I.kind) && (!I.tag || i.tags.includes(I.tag)) &&
     (!I.q || [i.title, i.body, i.tags.join(" "), i.milestones.map((m) => m.title).join(" "), (i.notes || []).map((n) => n.text).join(" ")].join(" ").toLowerCase().includes(I.q.toLowerCase()));
@@ -56,7 +60,7 @@
     $("#ideaTags").innerHTML = `<button class="chip ${!I.tag ? "active" : ""}" data-itag="">All tags</button>` +
       tags.map((t) => `<button class="chip ${I.tag === t ? "active" : ""}" data-itag="${esc(t)}">${esc(t)}</button>`).join("");
 
-    const xs = I.ideas.filter(matches);
+    const xs = I.ideas.filter(matches).sort(byAge);
     const board = $("#ideaBoard");
     if (I.layout === "board") {
       board.className = "board";
@@ -98,7 +102,7 @@
         ${i.notes?.length ? `<span class="meta" title="${plural(i.notes.length, "quick note")}">🗒 ${i.notes.length}</span>` : ""}
         ${i.milestones.length ? `<span class="meta">◇ ${done}/${i.milestones.length}</span>` : ""}
         ${proj ? `<span class="meta">🎯 project</span>` : ""}
-        <span class="spacer"></span><span class="meta">${timeAgo(i.updated_at)}</span>
+        <span class="spacer"></span><time class="meta ic-stamp" datetime="${esc(i.created_at)}" title="Captured ${esc(stamp(i.created_at))}${i.updated_at !== i.created_at ? ` · edited ${timeAgo(i.updated_at)}` : ""}">🕒 ${esc(stamp(i.created_at))}</time>
       </div>
     </article>`;
   }
@@ -179,7 +183,7 @@
       <div class="lib-controls">
         <label class="inline">Kind <select data-f="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${i.kind === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <label class="inline">Status <select data-f="status">${Object.entries(STATUSES).map(([k, v]) => `<option value="${k}" ${i.status === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <span class="hint inline">Created ${fmtDate(i.created_at.slice(0, 10))}</span>
+        <span class="hint inline">Captured ${esc(stamp(i.created_at))}</span>
       </div>
       <div class="tag-editor">
         ${i.tags.map((t) => `<span class="tag removable">${esc(t)}<button data-untag="${esc(t)}" aria-label="Remove tag">×</button></span>`).join("")}

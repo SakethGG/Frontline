@@ -564,6 +564,7 @@ button.pill { cursor: pointer; }
 .pill.kind-idea { background: var(--accent); color: var(--on-accent); }
 .pill.kind-proposal { background: var(--blue); color: var(--on-accent); }
 .pill.kind-roadmap { background: var(--purple); color: var(--on-accent); }
+.pill.kind-project { background: var(--good); color: var(--on-accent); }
 .pill.status-spark { background: var(--surface); } .pill.status-exploring { background: var(--accent-soft); }
 .pill.status-developing { background: var(--blue); color: var(--on-accent); } .pill.status-active { background: var(--good); color: var(--on-accent); }
 .pill.status-parked { background: var(--low); color: var(--on-accent); }
@@ -801,7 +802,8 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
   border-top-width: 7px;
 }
 .idea-card.kind-idea { border-top-color: var(--accent); } .idea-card.kind-proposal { border-top-color: var(--blue); }
-.idea-card.kind-roadmap { border-top-color: var(--purple); }
+.idea-card.kind-roadmap { border-top-color: var(--purple); } .idea-card.kind-project { border-top-color: var(--good); }
+.ic-stamp { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .idea-card:hover { transform: translate(-3px, -3px); box-shadow: var(--shadow-lg); }
 .idea-card.selected { outline: var(--bw) solid var(--ink); outline-offset: 3px; }
 .idea-card.dragging, .task-card.dragging { opacity: .45; }
@@ -936,12 +938,59 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .q-adj { display: inline-flex; gap: 2px; margin-left: 6px; vertical-align: middle; }
 .q-adj button { width: 18px; height: 18px; padding: 0; line-height: 1; font-weight: 800; border: 2px solid var(--ink); border-radius: 4px; background: var(--surface); cursor: pointer; font-size: 11px; }
 .q-adj button:hover { background: var(--accent); color: var(--on-accent); }
-.q-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
-.q-badge {
-  width: 28px; height: 28px; display: grid; place-items: center; font-size: 15px; border: 2px solid var(--ink); border-radius: 6px;
-  background: var(--surface-2); filter: grayscale(1); opacity: .35; cursor: help;
+.q-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.q-rank-name { font-size: 19px; font-weight: 900; letter-spacing: -.01em; line-height: 1.1; }
+.compact .q-rank-name { font-size: 16px; }
+.q-rank { align-items: baseline; }
+.q-abbr { font-size: 10px; font-weight: 800; line-height: 1; letter-spacing: .08em; padding: 2px 5px; margin-right: 6px; border: 2px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--surface); vertical-align: 2px; }
+
+/* badges: a metal medal hanging from a striped ribbon, coloured by tier */
+.q-badge { --m1: #f3c79a; --m2: #b8733a; --r1: #b8733a; --r2: #6b3f1d; position: relative; display: flex; flex-direction: column; align-items: center; cursor: help; outline: none; }
+.q-badge.silver { --m1: #f4f6f8; --m2: #9aa3ad; --r1: #3d6fb6; --r2: #e9edf2; }
+.q-badge.gold { --m1: #fff3b0; --m2: #d49b12; --r1: #b3261e; --r2: #f2c230; }
+.q-ribbon {
+  width: 18px; height: 12px; border: 2px solid var(--ink); border-bottom: 0;
+  background: repeating-linear-gradient(90deg, var(--r1) 0 4px, var(--r2) 4px 7px);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
 }
-.q-badge.got { filter: none; opacity: 1; background: var(--accent-soft); box-shadow: var(--shadow-sm); }
+.q-medal {
+  width: 32px; height: 32px; margin-top: -3px; display: grid; place-items: center; font-size: 16px; line-height: 1; border-radius: 50%;
+  border: 2px solid var(--ink); background: radial-gradient(circle at 32% 28%, var(--m1) 0 30%, var(--m2) 100%);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--m1) 55%, transparent), var(--shadow-sm);
+  transition: transform .18s cubic-bezier(.2, 1.4, .4, 1);
+}
+.q-badge:not(.got) .q-ribbon, .q-badge:not(.got) .q-medal { filter: grayscale(1); opacity: .35; box-shadow: none; }
+.q-badge.got .q-medal { position: relative; overflow: hidden; }
+.q-badge.got .q-medal::after {   /* a slow glint across earned medals */
+  content: ""; position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.75) 50%, transparent 60%);
+  transform: translateX(-120%); animation: q-glint 5s ease-in-out infinite;
+}
+.q-badge:hover .q-medal, .q-badge:focus-visible .q-medal { transform: translateY(-2px) rotate(-8deg) scale(1.12); }
+.q-badge:focus-visible .q-medal { outline: 2px solid var(--ink); outline-offset: 2px; }
+@keyframes q-glint { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+
+/* hover card */
+.q-tip {
+  position: absolute; z-index: 40; top: calc(100% + 10px); left: 50%; transform: translate(-50%, 4px); width: 220px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: default;
+  background: var(--surface); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow);
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .14s, transform .14s, visibility .14s;
+}
+.q-badges .q-badge:first-child .q-tip { left: 0; transform: translate(0, 4px); }
+.q-tip.right { left: auto; right: 0; transform: translate(0, 4px); }
+.q-badge:hover .q-tip, .q-badge:focus-visible .q-tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+.q-badges .q-badge:first-child:hover .q-tip, .q-badges .q-badge:first-child:focus-visible .q-tip,
+.q-badge:hover .q-tip.right, .q-badge:focus-visible .q-tip.right { transform: none; }
+.q-tip-head { display: flex; align-items: center; gap: 10px; }
+.q-tip-icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; font-size: 18px; border-radius: 50%; border: 2px solid var(--ink); background: radial-gradient(circle at 32% 28%, var(--m1) 0 30%, var(--m2) 100%); }
+.q-badge:not(.got) .q-tip-icon { filter: grayscale(1); }
+.q-tip-head b { display: block; font-size: 14px; font-weight: 800; line-height: 1.2; }
+.q-tier { display: block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--m2); }
+.q-tip-how { font-size: 12.5px; line-height: 1.4; }
+.q-tip-bar { height: 8px; border: 2px solid var(--ink); border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.q-tip-bar i { display: block; height: 100%; background: var(--m2); }
+.q-tip-prog, .q-tip-done { font-size: 11.5px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.q-tip-done { color: var(--text); }
 .q-chip { font-size: 11px; font-weight: 800; padding: 0 6px; border-radius: 4px; border: 2px solid var(--ink); background: var(--accent-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .q-chip.d2 { background: var(--danger); color: var(--on-accent); }
 .q-chip.d0 { background: var(--surface-2); }
@@ -1029,3 +1078,4 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .sm-cell.l4 { background: var(--sm-red); border-color: transparent; }
 .sm-cell.today { outline: 2px solid var(--ink); outline-offset: 1px; }
 .sm-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .q-badge.got .q-medal::after { animation: none; } .q-medal, .q-tip { transition: none; } }
