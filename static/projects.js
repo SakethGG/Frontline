@@ -57,6 +57,50 @@
     $("#taskTitle").placeholder = P.view === "future" ? "Add a future task: something for later… (Enter)" : "Add a mission… (Enter)";
     if (P.view === "todo") renderBoard(scoped.filter(matches));
     else renderFuture(scoped.filter(matches));
+    renderStreak(scoped);
+  }
+
+  // ---------------------------------------------------------------- activity map
+  // GitHub-style grid of the last year: a day turns red when at least one task was completed that day
+  // (deeper red for more). Follows the current scope: All tasks, Inbox or one project.
+
+  const localDay = (iso) => { const d = new Date(iso); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const shiftDay = (day, n) => new Date(new Date(day + "T12:00:00Z").getTime() + n * 864e5).toISOString().slice(0, 10);
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function renderStreak(tasks) {
+    const perDay = {};
+    for (const t of tasks) if (t.status === "done" && t.done_at) { const d = localDay(t.done_at); perDay[d] = (perDay[d] || 0) + 1; }
+    const today = todayISO();
+    const dow = new Date(today + "T12:00:00Z").getUTCDay();          // 0 = Sunday
+    const start = shiftDay(today, -(52 * 7 + dow));                  // Sunday 52 weeks back → 53 columns
+    let cells = "", months = "", active = 0, total = 0, lastMonth = -1;
+    for (let w = 0; w < 53; w++) {
+      const first = shiftDay(start, w * 7), m = +first.slice(5, 7) - 1;
+      if (m !== lastMonth) { if (w < 51) months += `<span style="grid-column:${w + 1}">${MONTHS[m]}</span>`; lastMonth = m; }
+      for (let d = 0; d < 7; d++) {
+        const day = shiftDay(start, w * 7 + d);
+        if (day > today) { cells += `<span class="sm-cell future" style="grid-area:${d + 1}/${w + 1}"></span>`; continue; }
+        const n = perDay[day] || 0;
+        if (n) { active++; total += n; }
+        const lvl = n === 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 5 ? 3 : 4;
+        const label = `${n ? plural(n, "task") + " done" : "No tasks done"} on ${new Date(day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}`;
+        cells += `<span class="sm-cell l${lvl}${day === today ? " today" : ""}" style="grid-area:${d + 1}/${w + 1}" title="${label}"></span>`;
+      }
+    }
+    let streak = 0, d = perDay[today] ? today : shiftDay(today, -1);
+    while (perDay[d]) { streak++; d = shiftDay(d, -1); }
+    const el = $("#projStreak");
+    el.innerHTML = `
+      <div class="panel-head"><h2>Activity</h2>
+        <span class="hint">${plural(total, "task")} done on ${plural(active, "day")} in the last year · current streak ${plural(streak, "day")}${perDay[today] ? "" : " · nothing done today yet"}</span></div>
+      <div class="sm-scroll"><div class="sm-wrap">
+        <div class="sm-days"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
+        <div><div class="sm-months">${months}</div><div class="sm-grid">${cells}</div></div>
+      </div></div>
+      <div class="sm-legend">Less <span class="sm-cell l0"></span><span class="sm-cell l1"></span><span class="sm-cell l2"></span><span class="sm-cell l3"></span><span class="sm-cell l4"></span> More</div>`;
+    const sc = el.querySelector(".sm-scroll");
+    sc.scrollLeft = sc.scrollWidth;  // most recent weeks first on narrow screens
   }
 
   function renderSide() {

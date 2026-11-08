@@ -810,7 +810,8 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .ic-body { margin: 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .ic-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; padding-top: 4px; }
 .board { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 10px; align-items: start; }
-.board.tasks { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
+.board.tasks { grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-x: visible; }  /* always fits the window */
+.board.tasks .board-col, .board.tasks .task-card { min-width: 0; overflow-wrap: anywhere; }
 .board-col { background: var(--surface-2); border: var(--bw) solid var(--ink); border-radius: var(--radius); padding: 10px; min-height: 200px; transition: background-color .12s; }
 .board-col.over { background: var(--accent-soft); border-style: dashed; }
 .board-col > h3 { margin: 0 0 10px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; display: flex; gap: 8px; align-items: center; }
@@ -891,7 +892,7 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
   .lib-list { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px 12px; }
   .task-add { flex-basis: 100%; justify-content: stretch; }
   .task-add input#taskTitle { flex-basis: 100%; }
-  .board.tasks { grid-template-columns: repeat(3, minmax(240px, 85vw)); }
+  .board.tasks { grid-template-columns: minmax(0, 1fr); }  /* stack the columns on phones */
   .board { grid-template-columns: repeat(5, minmax(220px, 85vw)); }
   .dl-row { grid-template-columns: minmax(0, 1fr) auto; }
   .dl-row .dl-date, .dl-row .dl-tz { grid-column: 1; }
@@ -1010,3 +1011,21 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
   .pomo-ring { width: 140px; height: 140px; } .pomo-ring > div { width: 104px; height: 104px; } .pomo-ring b { font-size: 28px; }
   .pomo-main { flex: 1 1 260px; }
 }
+
+/* Projects: GitHub-style activity map (projects.js renderStreak) */
+.streak-map { margin-top: 18px; --sm: 12px; --sm-gap: 3px; --sm-red: #e5383b; }
+.streak-map .panel-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.sm-scroll { overflow-x: auto; padding-bottom: 4px; }
+.sm-wrap { display: flex; gap: 6px; width: max-content; padding: 4px 6px 4px 2px; }  /* room for today's outline at the edges */
+.sm-days { display: grid; grid-template-rows: repeat(7, var(--sm)); gap: var(--sm-gap); margin-top: calc(var(--sm) + 6px); font-size: 10px; color: var(--muted); line-height: var(--sm); }
+.sm-months { display: grid; grid-template-columns: repeat(53, var(--sm)); gap: var(--sm-gap); height: var(--sm); margin-bottom: 6px; font-size: 10px; color: var(--muted); line-height: var(--sm); }
+.sm-months span { white-space: nowrap; }
+.sm-grid { display: grid; grid-template-rows: repeat(7, var(--sm)); grid-template-columns: repeat(53, var(--sm)); gap: var(--sm-gap); }
+.sm-cell { display: inline-block; width: var(--sm); height: var(--sm); border-radius: 2px; border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); background: transparent; }
+.sm-cell.future { border-color: transparent; }
+.sm-cell.l1 { background: color-mix(in srgb, var(--sm-red) 40%, transparent); border-color: transparent; }
+.sm-cell.l2 { background: color-mix(in srgb, var(--sm-red) 62%, transparent); border-color: transparent; }
+.sm-cell.l3 { background: color-mix(in srgb, var(--sm-red) 82%, transparent); border-color: transparent; }
+.sm-cell.l4 { background: var(--sm-red); border-color: transparent; }
+.sm-cell.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.sm-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 8px; font-size: 11px; color: var(--muted); }
