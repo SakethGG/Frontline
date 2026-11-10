@@ -1079,3 +1079,44 @@ fieldset.deadlines legend { font-weight: 700; font-size: 13px; padding: 0 6px; }
 .sm-cell.today { outline: 2px solid var(--ink); outline-offset: 1px; }
 .sm-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 8px; font-size: 11px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .q-badge.got .q-medal::after { animation: none; } .q-medal, .q-tip { transition: none; } }
+
+/* ---------- blog posts (a writer's editor inside Ideas) ---------- */
+.pill.kind-blog { background: var(--accent-2); color: var(--on-accent); }
+.idea-card.kind-blog { border-top-color: var(--accent-2); }
+.pill.status-published { background: var(--accent-2); color: var(--on-accent); }
+.ic-body.ic-hook { font-style: italic; }
+.hook-input {
+  width: 100%; font-size: 15px; font-style: italic; color: var(--muted); padding: 4px 8px; margin: 2px 0 0 -8px;
+  border: var(--bw) solid transparent; border-radius: 6px; background: transparent;
+}
+.hook-input:hover { border-color: var(--surface-2); }
+.hook-input:focus { outline: none; border-color: var(--ink); background: var(--surface-2); color: var(--text); }
+.num-input { width: 84px; padding: 4px 8px; border-radius: 6px; border: var(--bw) solid var(--ink); background: var(--surface); font-weight: 600; }
+.pub-link { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.pub-link input { flex: 1; min-width: 0; padding: 6px 10px; border-radius: 6px; border: var(--bw) solid var(--ink); background: var(--surface); }
+.blog-stats { font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+.mini-progress.inline { display: inline-block; width: 70px; height: 7px; margin: 0; }
+textarea.notes.writer {
+  font-family: Charter, "Iowa Old Style", Georgia, Cambria, serif; font-size: 17px; line-height: 1.75;
+  min-height: 55vh; padding: 16px 18px;
+}
+.preview-box.writer { font-family: Charter, "Iowa Old Style", Georgia, Cambria, serif; font-size: 17px; line-height: 1.75; padding: 8px 18px; }
+
+/* focus mode: the drawer fills the window and only the draft remains */
+/* a blog post always opens as a full window; the ✕ stays top-right */
+.reader.drawer.writing { width: 100vw; border-left: 0; box-shadow: none; }
+.drawer.writing .reader-scroll { padding-top: 28px; }
+.drawer.writing .blog-page { max-width: 820px; margin: 0 auto; }
+.drawer.focus .blog-extra { display: none; }
+.drawer.focus .reader-scroll { padding-top: 32px; }
+.drawer.focus .blog-page { max-width: 760px; }
+.drawer.focus .title-input { font-size: 30px; }
+.drawer.focus textarea.notes.writer {
+  min-height: calc(100vh - 260px); border-color: transparent; background: transparent; box-shadow: none; resize: none;
+  font-size: 19px; padding: 8px 0;
+}
+.drawer.focus .preview-box.writer { border-color: transparent; font-size: 19px; padding: 8px 0; }
+@media (max-width: 640px) {
+  .drawer.focus .title-input { font-size: 24px; }
+  .drawer.focus textarea.notes.writer, .drawer.focus .preview-box.writer { font-size: 17px; }
+}

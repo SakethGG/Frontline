@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=25">
+  <link rel="stylesheet" href="/static/style.css?v=27">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -155,7 +155,7 @@
   <!-- Ideation center -->
   <main class="page" data-section="ideas" hidden>
     <div class="section-head">
-      <div><h1>Ideas</h1><p class="sub">Sparks, research proposals and roadmaps. Capture fast, develop later.</p></div>
+      <div><h1>Ideas</h1><p class="sub">Sparks, research proposals, roadmaps and blog posts. Capture fast, develop later.</p></div>
       <div class="head-actions">
         <div class="seg" id="ideaLayout">
           <button data-layout="grid" class="on">Grid</button><button data-layout="board">Board</button>
@@ -165,7 +165,7 @@
     <form class="capture" id="ideaCapture">
       <input id="ideaInput" placeholder="Capture an idea… (Enter to save)" autocomplete="off" aria-label="New idea">
       <select id="ideaKind" aria-label="Kind">
-        <option value="idea">💡 Idea</option><option value="project">🚀 Project</option><option value="proposal">📝 Proposal</option><option value="roadmap">🗺 Roadmap</option>
+        <option value="idea">💡 Idea</option><option value="project">🚀 Project</option><option value="proposal">📝 Proposal</option><option value="roadmap">🗺 Roadmap</option><option value="blog">✍️ Blog</option>
       </select>
       <button class="primary-btn" type="submit">Add</button>
     </form>
@@ -176,6 +176,7 @@
         <button class="tab" data-ikind="project">Projects</button>
         <button class="tab" data-ikind="proposal">Proposals</button>
         <button class="tab" data-ikind="roadmap">Roadmaps</button>
+        <button class="tab" data-ikind="blog">Blogs</button>
       </div>
       <div class="view-controls"><select id="ideaStatus" aria-label="Status filter"></select></div>
     </div>
@@ -575,7 +576,7 @@
   <script src="/static/home.js?v=7"></script>
   <script src="/static/library.js?v=5"></script>
   <script src="/static/conferences.js?v=2"></script>
-  <script src="/static/ideas.js?v=2"></script>
+  <script src="/static/ideas.js?v=3"></script>
   <script src="/static/projects.js?v=5"></script>
 </body>
 </html>

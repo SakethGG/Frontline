@@ -1,14 +1,23 @@
 // Ideas: a pure ideation space. Quick capture, then develop ideas into proposals and roadmaps,
 // link the papers they build on, ask the AI to critique / brainstorm / draft, and promote to a project.
+// Blog posts are ideas too, with their own writer's editor: a blank page, writing stages, word counts,
+// a focus mode, fragments, an editor-style assistant and Markdown export for the website.
 (() => {
   const I = {
     placeholder: "Search ideas…",
     ideas: [], projects: [], q: "", kind: "", status: "", tag: null,
-    layout: pref("ideas.layout") || "grid", openId: null, preview: false,
+    layout: pref("ideas.layout") || "grid", openId: null, preview: false, focus: false,
   };
   Sections.ideas = I;
-  const KINDS = { idea: "💡 Idea", project: "🚀 Project", proposal: "📝 Proposal", roadmap: "🗺 Roadmap" };
+  const KINDS = { idea: "💡 Idea", project: "🚀 Project", proposal: "📝 Proposal", roadmap: "🗺 Roadmap", blog: "✍️ Blog" };
   const STATUSES = { spark: "Spark", exploring: "Exploring", developing: "Developing", active: "Active", parked: "Parked" };
+  // blog posts reuse the same stored statuses, shown as writing stages, plus "published"
+  const STAGES = { spark: "Idea", exploring: "Outlining", developing: "Drafting", active: "Editing", published: "Published", parked: "Parked" };
+  const isBlog = (i) => i.kind === "blog";
+  const statusesFor = (blog) => (blog ? STAGES : STATUSES);
+  const statusLabel = (i) => (isBlog(i) ? STAGES : STATUSES)[i.status] || STAGES[i.status] || i.status;
+  const words = (s) => (String(s || "").replace(/[#*_>`~\[\]()|-]+/g, " ").match(/\S+/g) || []).length;
+  const readMins = (n) => Math.max(1, Math.round(n / 230));
   const TEMPLATES = {
     project: "## What I want to build\n\n## Why it's worth doing\n\n## First steps\n- \n",
     proposal: "## Problem\nWhat's broken or missing, and for whom?\n\n## Hypothesis\n\n## Approach\n\n## Evaluation\nPlatforms / datasets, baselines, metrics.\n\n## Risks\n\n## Resources & collaborators\n",
@@ -48,13 +57,16 @@
   const byAge = (a, b) => (b.pinned - a.pinned) || a.created_at.localeCompare(b.created_at) || a.id - b.id;
   const plain = (s) => String(s || "").replace(/^#+\s.*$/gm, "").replace(/[*_>`#-]/g, "").replace(/\s+/g, " ").trim();
   const matches = (i) => (!I.kind || i.kind === I.kind) && (!I.tag || i.tags.includes(I.tag)) &&
-    (!I.q || [i.title, i.body, i.tags.join(" "), i.milestones.map((m) => m.title).join(" "), (i.notes || []).map((n) => n.text).join(" ")].join(" ").toLowerCase().includes(I.q.toLowerCase()));
+    (!I.q || [i.title, i.body, i.meta?.hook, i.tags.join(" "), i.milestones.map((m) => m.title).join(" "), (i.notes || []).map((n) => n.text).join(" ")].join(" ").toLowerCase().includes(I.q.toLowerCase()));
 
   function render() {
     $$("#ideaTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.ikind === I.kind));
     $$("#ideaLayout button").forEach((b) => b.classList.toggle("on", b.dataset.layout === I.layout));
-    $("#ideaStatus").innerHTML = `<option value="">Any status</option>` +
-      Object.entries(STATUSES).map(([k, v]) => `<option value="${k}" ${I.status === k ? "selected" : ""}>${v}</option>`).join("");
+    const blogView = I.kind === "blog";
+    $("#ideaInput").placeholder = blogView ? "Capture a blog or essay idea… (Enter to save)" : "Capture an idea… (Enter to save)";
+    if (I.kind) $("#ideaKind").value = I.kind;
+    $("#ideaStatus").innerHTML = `<option value="">${blogView ? "Any stage" : "Any status"}</option>` +
+      Object.entries(statusesFor(blogView)).map(([k, v]) => `<option value="${k}" ${I.status === k ? "selected" : ""}>${v}</option>`).join("");
     const tags = [...new Set(I.ideas.flatMap((i) => i.tags))].sort();
     $("#ideaTags").hidden = !tags.length;
     $("#ideaTags").innerHTML = `<button class="chip ${!I.tag ? "active" : ""}" data-itag="">All tags</button>` +
@@ -64,7 +76,10 @@
     const board = $("#ideaBoard");
     if (I.layout === "board") {
       board.className = "board";
-      board.innerHTML = Object.entries(STATUSES).map(([k, v]) => {
+      const cols = blogView ? { ...STAGES }
+        : { ...STATUSES, ...(xs.some((i) => i.status === "published") ? { published: STAGES.published } : {}) };
+      board.style.gridTemplateColumns = `repeat(${Object.keys(cols).length}, minmax(220px, 1fr))`;
+      board.innerHTML = Object.entries(cols).map(([k, v]) => {
         const col = xs.filter((i) => i.status === k);
         return `<section class="board-col" data-drop-status="${k}">
           <h3>${v} <span class="badge">${col.length || ""}</span></h3>
@@ -72,6 +87,7 @@
       }).join("");
     } else {
       board.className = "idea-grid";
+      board.style.gridTemplateColumns = "";
       board.innerHTML = xs.filter((i) => !I.status || i.status === I.status).map(cardHTML).join("");
     }
     const shown = I.layout === "board" ? xs.length : xs.filter((i) => !I.status || i.status === I.status).length;
@@ -80,16 +96,18 @@
     empty.innerHTML = I.ideas.length
       ? `<h3>Nothing matches</h3><p>No ideas fit these filters.</p>`
       : `<h3>A blank page</h3><p>Type an idea above and press Enter. Rough is fine: sparks become proposals and roadmaps later.</p>`;
+    if (blogView && !I.ideas.some(isBlog)) empty.innerHTML = `<h3>No posts yet</h3><p>Type a blog or essay idea above and press Enter. Each post gets its own page to outline, draft and polish.</p>`;
   }
 
   function cardHTML(i) {
+    if (isBlog(i)) return blogCardHTML(i);
     const done = i.milestones.filter((m) => m.done).length;
     const proj = I.projects.find((p) => p.idea_id === i.id);
     return `
     <article class="idea-card kind-${i.kind} ${i.id === I.openId ? "selected" : ""}" data-iid="${i.id}" draggable="true">
       <div class="ic-head">
         <span class="pill kind-${i.kind}">${KINDS[i.kind]}</span>
-        <span class="pill status-${i.status}">${STATUSES[i.status]}</span>
+        <span class="pill status-${i.status}">${statusLabel(i)}</span>
         <span class="spacer"></span>
         <button class="star-btn ${i.pinned ? "on" : ""}" data-iact="pin" title="${i.pinned ? "Unpin" : "Pin to top"}" aria-label="Pin">${i.pinned ? "★" : "☆"}</button>
       </div>
@@ -107,6 +125,39 @@
     </article>`;
   }
 
+  function blogCardHTML(i) {
+    const m = i.meta || {}, n = words(i.body), target = +m.target || 0;
+    const blurb = m.hook || plain(i.body);
+    return `
+    <article class="idea-card kind-blog ${i.id === I.openId ? "selected" : ""}" data-iid="${i.id}" draggable="true">
+      <div class="ic-head">
+        <span class="pill kind-blog">${KINDS.blog}</span>
+        <span class="pill status-${i.status}">${statusLabel(i)}</span>
+        <span class="spacer"></span>
+        <button class="star-btn ${i.pinned ? "on" : ""}" data-iact="pin" title="${i.pinned ? "Unpin" : "Pin to top"}" aria-label="Pin">${i.pinned ? "★" : "☆"}</button>
+      </div>
+      <h3>${esc(i.title)}</h3>
+      ${blurb ? `<p class="ic-body ${m.hook ? "ic-hook" : ""}">${esc(blurb.slice(0, 200))}</p>` : ""}
+      ${target ? `<div class="mini-progress" title="${n.toLocaleString()} of ${target.toLocaleString()} words"><span style="width:${Math.min(100, (100 * n) / target)}%"></span></div>` : ""}
+      <div class="ic-foot">
+        ${i.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
+        <span class="meta">${n ? `${n.toLocaleString()} words` : "Not started"}</span>
+        ${i.notes?.length ? `<span class="meta" title="${plural(i.notes.length, "fragment")}">🗒 ${i.notes.length}</span>` : ""}
+        ${m.url ? `<span class="meta">🔗 live</span>` : ""}
+        <span class="spacer"></span><time class="meta ic-stamp" datetime="${esc(i.created_at)}" title="Captured ${esc(stamp(i.created_at))}${i.updated_at !== i.created_at ? ` · edited ${timeAgo(i.updated_at)}` : ""}">🕒 ${esc(stamp(i.created_at))}</time>
+      </div>
+    </article>`;
+  }
+
+  // the open blog editor's hook / word target / link, or null if nothing changed
+  function readMeta(cur) {
+    const boxes = $$("#drawer [data-m]");
+    if (!boxes.length) return null;
+    const meta = { ...(cur.meta || {}) };
+    for (const b of boxes) meta[b.dataset.m] = b.dataset.m === "target" ? (parseInt(b.value, 10) || 0) : b.value.trim();
+    return JSON.stringify(meta) === JSON.stringify(cur.meta || {}) ? null : meta;
+  }
+
   // unsaved typing in the open editor, so a re-render never drops it
   function pendingEdits(id) {
     const cur = I.ideas.find((x) => x.id === id);
@@ -117,6 +168,8 @@
     if (t && t.value.trim() && t.value.trim() !== cur.title) out.title = t.value.trim();
     const qn = readQuickNotes(cur);
     if (qn) out.notes = qn;
+    const meta = readMeta(cur);
+    if (meta) out.meta = meta;
     return out;
   }
 
@@ -150,8 +203,8 @@
 
   const fitNote = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };
 
-  const quickNotesHTML = (i) => `
-      <div class="editor-head"><h4 class="sec-title">Quick notes ${i.notes?.length ? `<span class="hint inline">${i.notes.length}</span>` : ""}</h4></div>
+  const quickNotesHTML = (i, label = "Quick notes") => `
+      <div class="editor-head"><h4 class="sec-title">${label} ${i.notes?.length ? `<span class="hint inline">${i.notes.length}</span>` : ""}</h4></div>
       <div class="qnotes">${(i.notes || []).map((n, k) => `
         <div class="qnote" style="--qn:${esc(n.color || NOTE_COLORS[k % NOTE_COLORS.length])}">
           <textarea data-qn="${k}" rows="2" aria-label="Quick note">${esc(n.text)}</textarea>
@@ -170,6 +223,8 @@
   // ---------------------------------------------------------------- drawer editor
 
   function renderDrawer(i) {
+    if (isBlog(i)) return renderBlogDrawer(i);
+    $("#drawer").classList.remove("writing", "focus");
     const proj = I.projects.find((p) => p.idea_id === i.id);
     const done = i.milestones.filter((m) => m.done).length;
     const a = assists.get(i.id);
@@ -240,11 +295,97 @@
     $$("#drawer [data-qn]").forEach(fitNote);
   }
 
-  const ASSIST_TITLE = { critique: "Pressure-test", expand: "Brainstorm", proposal: "Proposal draft" };
+  // ---------------------------------------------------------------- blog editor
+  // A writer's page: no papers or milestones, just the draft, its stage, and the bits around it.
+
+  function statsHTML(i, body = i.body) {
+    const n = words(body), target = +(i.meta || {}).target || 0;
+    return `${n.toLocaleString()} ${n === 1 ? "word" : "words"}${n ? ` · ${readMins(n)} min read` : ""}` +
+      (target ? ` · ${Math.round((100 * n) / target)}% of ${target.toLocaleString()}
+        <span class="mini-progress inline"><span style="width:${Math.min(100, (100 * n) / target)}%"></span></span>` : "");
+  }
+
+  function renderBlogDrawer(i) {
+    const m = i.meta || {}, a = assists.get(i.id);
+    $("#drawer").classList.add("writing");
+    $("#drawer").classList.toggle("focus", I.focus);
+    openDrawer(`
+      <div class="reader-nav"><span class="drawer-kicker">${KINDS.blog}</span><span class="save-state" id="ideaSaved"></span></div>
+      <div class="reader-actions">
+        <button class="ghost-btn ${I.focus ? "on" : ""}" data-x="focus" title="Full-screen writing, just you and the draft (Esc to leave)">${I.focus ? "⤡ Exit focus" : "⤢ Focus"}</button>
+        <button class="ghost-btn ${i.pinned ? "on" : ""} blog-extra" data-x="pin">${i.pinned ? "★ Pinned" : "☆ Pin"}</button>
+        <button class="icon-btn" data-x="close" title="Close" aria-label="Close">✕</button>
+      </div>`, `
+      <div class="blog-page">
+      <input class="title-input" data-f="title" value="${esc(i.title)}" placeholder="Working title" aria-label="Title">
+      <input class="hook-input" data-m="hook" value="${esc(m.hook || "")}" placeholder="The hook: what is this post really about, in one line?" aria-label="Hook">
+      <div class="lib-controls blog-extra">
+        <label class="inline">Stage <select data-f="status">${Object.entries(STAGES).map(([k, v]) => `<option value="${k}" ${i.status === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="inline">Aim for <input type="number" class="num-input" data-m="target" min="0" step="100" value="${+m.target || ""}" placeholder="—" aria-label="Target word count"> words</label>
+        <label class="inline">Kind <select data-f="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${i.kind === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <span class="hint inline">Captured ${esc(stamp(i.created_at))}</span>
+      </div>
+      ${i.status === "published" || m.url ? `
+      <div class="pub-link blog-extra">
+        <input data-m="url" value="${esc(m.url || "")}" placeholder="Link to the published post on your site" aria-label="Published link">
+        ${m.url ? `<a class="ghost-btn" href="${esc(m.url)}" target="_blank" rel="noopener">Open ↗</a>` : ""}
+      </div>` : ""}
+      <div class="tag-editor blog-extra">
+        ${i.tags.map((t) => `<span class="tag removable">${esc(t)}<button data-untag="${esc(t)}" aria-label="Remove tag">×</button></span>`).join("")}
+        <input data-x="tag-input" placeholder="+ tag" list="ideaTagList" aria-label="Add a tag">
+        <datalist id="ideaTagList">${[...new Set(I.ideas.flatMap((x) => x.tags))].filter((t) => !i.tags.includes(t)).map((t) => `<option value="${esc(t)}">`).join("")}</datalist>
+      </div>
+
+      <div class="editor-head">
+        <h4 class="sec-title">Draft</h4>
+        <span class="hint inline blog-stats" id="blogStats">${statsHTML(i)}</span>
+        <div class="seg small"><button data-x="write" class="${I.preview ? "" : "on"}">Write</button><button data-x="preview" class="${I.preview ? "on" : ""}">Preview</button></div>
+      </div>
+      ${I.preview
+        ? `<div class="md preview-box writer" data-x="write">${md(i.body) || `<p class="hint">Nothing written yet.</p>`}</div>`
+        : `<textarea class="notes big writer" data-f="body" placeholder="Start anywhere. A messy paragraph, a list of points, the ending you already know. Markdown works: ## headings, **bold**, > quotes.">${esc(i.body)}</textarea>`}
+
+      <div class="blog-extra">
+      ${quickNotesHTML(i, "Fragments")}
+
+      <div class="assistant">
+        <div class="editor-head"><h4 class="sec-title">Editor</h4><span class="hint inline">${state.status?.ai ? `${esc(state.status.provider)} reads your draft and fragments. It suggests; it never rewrites your post` : "Needs an AI key in .env"}</span></div>
+        <div class="assist-actions">
+          <button class="ghost-btn" data-assist="outline" title="A structure built from what you've already written">🧭 Suggest an outline</button>
+          <button class="ghost-btn" data-assist="titles" title="Ten title and subtitle options">🏷 Title ideas</button>
+          <button class="ghost-btn" data-assist="edit" title="An editor's read: what's working, where readers drift, line notes">🔍 Editor's read</button>
+        </div>
+        <div id="ideaAssist">${a ? assistHTML(a) : ""}</div>
+      </div>
+
+      <div class="drawer-foot">
+        <button class="primary-btn" data-x="export-md" title="A .md file with front matter, ready for your site">⬇ Download .md</button>
+        <button class="ghost-btn" data-x="copy-md">Copy Markdown</button>
+        <span class="spacer"></span>
+        <button class="danger-btn" data-x="delete">Delete</button>
+      </div>
+      </div>
+      </div>`);
+    $$("#drawer [data-qn]").forEach(fitNote);
+    if (I.focus && !I.preview) $('#drawer [data-f="body"]')?.focus();
+  }
+
+  const slug = (s) => String(s).toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/[\s_-]+/g, "-").slice(0, 80) || "post";
+  function postMarkdown(i, { frontMatter = false } = {}) {
+    const body = $('#drawer [data-f="body"]')?.value ?? i.body;
+    const m = i.meta || {};
+    if (!frontMatter) return `# ${i.title}\n\n${body.trim()}\n`;
+    const q = (v) => JSON.stringify(String(v));
+    return ["---", `title: ${q(i.title)}`, `date: ${new Date().toISOString().slice(0, 10)}`,
+      ...(m.hook ? [`description: ${q(m.hook)}`] : []), ...(i.tags.length ? [`tags: [${i.tags.map(q).join(", ")}]`] : []),
+      `draft: ${i.status !== "published"}`, "---", "", body.trim(), ""].join("\n");
+  }
+
+  const ASSIST_TITLE = { critique: "Pressure-test", expand: "Brainstorm", proposal: "Proposal draft", outline: "Suggested outline", titles: "Title ideas", edit: "Editor's read" };
   const assistHTML = (a) => a.loading
     ? `<div class="assist-out"><span class="loading">Thinking about your idea…</span></div>`
     : `<div class="assist-out"><div class="md">${md(a.markdown)}</div>
-        <div class="assist-foot"><button class="ghost-btn" data-x="assist-append">Append to notes</button>
+        <div class="assist-foot"><button class="ghost-btn" data-x="assist-append">${a.mode in { outline: 1, titles: 1, edit: 1 } ? "Save as a fragment" : "Append to notes"}</button>
         <button class="ghost-btn" data-x="assist-copy">Copy</button><button class="text-btn" data-x="assist-dismiss">Dismiss</button></div></div>`;
 
   async function runAssist(i, mode) {
@@ -334,6 +475,16 @@
     if ((v = el("data-assist")) != null) return runAssist(i, v);
     switch (x) {
       case "close": return closeDrawer();
+      case "focus": I.focus = !I.focus; return renderDrawer(I.ideas.find((y) => y.id === i.id));
+      case "copy-md": await navigator.clipboard.writeText(postMarkdown(i)); return toast("Copied as Markdown");
+      case "export-md": {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([postMarkdown(i, { frontMatter: true })], { type: "text/markdown" }));
+        a.download = `${slug(i.title)}.md`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        return;
+      }
       case "pin": return renderDrawer(await patch(i.id, { pinned: !i.pinned }));
       case "write": case "preview":
         if (e.target.closest(".preview-box") && x === "write" && e.target.closest("a")) return;  // let links in the preview work
@@ -346,6 +497,12 @@
       case "assist-copy": await navigator.clipboard.writeText(assists.get(i.id)?.markdown || ""); return toast("Copied");
       case "assist-append": {
         const a = assists.get(i.id);
+        if (isBlog(i)) {  // keep the draft in the writer's own words: AI output goes beside it, not into it
+          const notes = [...(readQuickNotes(i) || i.notes || []), { text: `${ASSIST_TITLE[a.mode]}\n\n${a.markdown.trim()}`, color: nextColor(i), at: new Date().toISOString() }];
+          assists.delete(i.id);
+          toast("Saved to fragments");
+          return renderDrawer(await patch(i.id, { notes }));
+        }
         const current = $('#drawer [data-f="body"]')?.value ?? i.body;
         const body = `${current.trim()}\n\n---\n### ${ASSIST_TITLE[a.mode]} (${new Date().toLocaleDateString()})\n\n${a.markdown}\n`;
         assists.delete(i.id);
@@ -435,7 +592,16 @@
       if (state.section !== "ideas" || I.openId === null) return;
       const f = e.target.dataset.f;
       if (f === "title" && e.target.value.trim()) saveField(I.openId, "title", e.target.value.trim());
-      if (f === "body") saveField(I.openId, "body", e.target.value);
+      if (f === "body") {
+        saveField(I.openId, "body", e.target.value);
+        const stats = $("#blogStats");
+        if (stats) stats.innerHTML = statsHTML(I.ideas.find((x) => x.id === I.openId), e.target.value);
+      }
+      if (e.target.dataset.m != null) {
+        const cur = I.ideas.find((x) => x.id === I.openId), meta = readMeta(cur);
+        if (meta) saveField(I.openId, "meta", meta);
+        if (e.target.dataset.m === "target") $("#blogStats").innerHTML = statsHTML({ ...cur, meta: meta || cur.meta }, $('#drawer [data-f="body"]')?.value ?? cur.body);
+      }
       if (e.target.matches("[data-qn], [data-x='qn-add'] textarea")) fitNote(e.target);
       if (e.target.dataset.qn != null) {
         const notes = readQuickNotes(I.ideas.find((x) => x.id === I.openId));
@@ -475,6 +641,19 @@
       renderDrawer(await patch(i.id, { milestones: [...i.milestones, { title, done: false }] }));
       $('#drawer [data-x="ms-add"] input')?.focus();
     });
-    drawer.addEventListener("drawerclose", () => { if (I.openId !== null) { I.openId = null; paperPool = null; render(); } });
+    drawer.addEventListener("drawerclose", () => {
+      drawer.classList.remove("writing", "focus");
+      I.focus = false;
+      if (I.openId !== null) { I.openId = null; paperPool = null; render(); }
+    });
+    // in focus mode, Esc steps back out of focus instead of closing the post
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !I.focus || !drawer.classList.contains("focus") || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      I.focus = false;
+      const i = I.ideas.find((x) => x.id === I.openId);
+      if (i) renderDrawer(i);
+    }, true);
   });
 })();

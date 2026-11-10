@@ -424,10 +424,38 @@ class Summarizer:
         ),
     }
 
+    # Blog posts get an editor, not a research advisor. These never rewrite the draft: the voice stays the writer's.
+    BLOG_MODES = {
+        "outline": (
+            "Suggest a structure for this post in Markdown. Start with the strongest angle you see in one line, "
+            "then an outline: an opening hook, 4-7 sections (a heading plus one line on what it argues or shows), "
+            "and an ending that lands. Build on whatever the writer has already drafted or jotted rather than "
+            "replacing it, and point out which existing passages belong where."
+        ),
+        "titles": (
+            "Give 10 title options for this post as a Markdown list, each with an optional subtitle after an em dash. "
+            "Vary the style: plain and clear, curious, contrarian, personal, list-style. No clickbait. "
+            "End with one line saying which you'd pick and why."
+        ),
+        "edit": (
+            "Read this draft like a thoughtful editor. Markdown sections:\n"
+            "## What's working\n## Where readers will drift or get lost (quote the passage)\n"
+            "## The argument (is the main point clear? what's missing or unearned?)\n"
+            "## Line-level notes (up to 8: quote, then a suggestion)\n## Before you publish (a short checklist)\n"
+            "Don't rewrite the post. Keep the writer's voice; suggest, don't replace."
+        ),
+    }
+
     async def idea_assist(self, mode: str, idea: dict, papers: list[dict], context: str) -> str:
-        """Markdown help for an idea: critique, brainstorm, or a proposal draft."""
+        """Markdown help for an idea: critique, brainstorm, or a proposal draft (or, for a blog post, editing help)."""
         if not self.enabled:
             return f"_The idea assistant needs an AI key: set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in `.env` and restart ({self.disabled_reason or 'no key'})._"
+        if mode in self.BLOG_MODES:
+            return await self._text(
+                system="You are a warm, candid editor helping a writer develop a blog post or essay for their personal website.",
+                messages=[{"role": "user", "content": _blog_prompt(idea) + self.BLOG_MODES[mode]}],
+                effort="medium", max_tokens=16000,
+            )
         return await self._text(
             system="You are a creative, rigorous research advisor helping a researcher develop ideas.",
             messages=[{"role": "user", "content": _idea_prompt(idea, papers, context) + self.IDEA_MODES[mode]}],
@@ -515,6 +543,21 @@ def _idea_prompt(idea: dict, papers: list[dict], context: str) -> str:
         + (f"Quick notes:\n{quick}\n\n" if quick else "")
         + f"Current milestones:\n{milestones}\n</idea>\n\n"
         f"<linked_papers>\n{linked}\n</linked_papers>\n\n"
+    )
+
+
+def _blog_prompt(idea: dict) -> str:
+    meta = idea.get("meta") or {}
+    quick = "\n".join("- " + n["text"].strip().replace("\n", "\n  ") for n in idea.get("notes") or [] if n.get("text", "").strip())
+    return (
+        f"<post stage=\"{idea.get('status', '')}\">\n"
+        f"Working title: {idea.get('title', '')}\n"
+        + (f"Hook / angle: {meta['hook']}\n" if meta.get("hook") else "")
+        + (f"Target length: ~{meta['target']} words\n" if meta.get("target") else "")
+        + f"Tags: {', '.join(idea.get('tags') or []) or '(none)'}\n\n"
+        f"Draft:\n{idea.get('body') or '(empty)'}\n\n"
+        + (f"Fragments and notes:\n{quick}\n" if quick else "")
+        + "</post>\n\n"
     )
 
 

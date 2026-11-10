@@ -174,6 +174,7 @@ MIGRATIONS = {
     },
     "ideas": {
         "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], beside the long-form body
+        "meta": "TEXT NOT NULL DEFAULT '{}'",  # per-kind extras, e.g. a blog post's {hook, target, url}
     },
     "projects": {
         "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], in the right-hand sidebar
@@ -513,7 +514,7 @@ def set_setting(key: str, value) -> None:
 RECORD_JSON = {
     "library": ("authors", "tags"),
     "conferences": ("tags", "deadlines"),
-    "ideas": ("tags", "papers", "milestones", "notes"),
+    "ideas": ("tags", "papers", "milestones", "notes", "meta"),
     "projects": ("notes",),
     "tasks": (),
     "deadlines": (),

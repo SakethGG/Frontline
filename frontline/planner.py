@@ -1,4 +1,4 @@
-"""Ideation center (ideas, proposals, roadmaps), project planning (projects + tasks) and personal deadlines."""
+"""Ideation center (ideas, proposals, roadmaps, blog posts), project planning (projects + tasks) and personal deadlines."""
 
 from datetime import datetime, timezone
 
@@ -10,8 +10,8 @@ from .summarizer import API_ERRORS, Refused, explain, summarizer
 
 router = APIRouter(prefix="/api")
 
-IDEA_KINDS = "^(idea|project|proposal|roadmap)$"
-IDEA_STATUSES = "^(spark|exploring|developing|active|parked)$"
+IDEA_KINDS = "^(idea|project|proposal|roadmap|blog)$"
+IDEA_STATUSES = "^(spark|exploring|developing|active|published|parked)$"  # blogs show these as writing stages
 TASK_STATUSES = "^(todo|doing|done|future)$"
 PROJECT_COLORS = ["#ff8b7b", "#fff27a", "#8fe3a4", "#7cc4ff", "#c9a7ff", "#ffb86b", "#5ee6d0", "#f78fb3"]  # as in projects.js
 
@@ -53,6 +53,7 @@ class IdeaIn(BaseModel):
     papers: list[PaperRef] | None = None
     milestones: list[Milestone] | None = None
     notes: list[QuickNote] | None = None
+    meta: dict | None = None  # blog posts: {hook, target, url}
     pinned: bool | None = None
 
 
@@ -101,7 +102,7 @@ def _context() -> str:
 
 
 class AssistIn(BaseModel):
-    mode: str = Field(pattern="^(critique|expand|proposal|roadmap)$")
+    mode: str = Field(pattern="^(critique|expand|proposal|roadmap|outline|titles|edit)$")  # the last three: blogs
 
 
 @router.post("/ideas/{iid}/assist")
