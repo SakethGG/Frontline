@@ -1120,3 +1120,15 @@ textarea.notes.writer {
   .drawer.focus .title-input { font-size: 24px; }
   .drawer.focus textarea.notes.writer, .drawer.focus .preview-box.writer { font-size: 17px; }
 }
+
+/* ---------- bin (completed items, kept 30 days) ---------- */
+.done-btn { background: var(--good); color: var(--on-accent); }
+.bin-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.bin-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px;
+  background: var(--surface); border: var(--bw) solid var(--ink); border-radius: 6px; box-shadow: var(--shadow-sm);
+}
+.bin-main { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.bin-main b { overflow-wrap: anywhere; }
+.bin-main small { color: var(--muted); font-size: 12px; }
+.bin-actions { display: flex; gap: 8px; flex-wrap: wrap; }

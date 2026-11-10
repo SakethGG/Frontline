@@ -1,6 +1,6 @@
 """Ideation center (ideas, proposals, roadmaps, blog posts), project planning (projects + tasks) and personal deadlines."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -14,6 +14,18 @@ IDEA_KINDS = "^(idea|project|proposal|roadmap|blog)$"
 IDEA_STATUSES = "^(spark|exploring|developing|active|published|parked)$"  # blogs show these as writing stages
 TASK_STATUSES = "^(todo|doing|done|future)$"
 PROJECT_COLORS = ["#ff8b7b", "#fff27a", "#8fe3a4", "#7cc4ff", "#c9a7ff", "#ffb86b", "#5ee6d0", "#f78fb3"]  # as in projects.js
+
+
+BIN_DAYS = 30  # completed ideas, blog posts and projects wait this long in the bin, then are deleted for good
+LIVE = "binned_at = ''"
+
+
+def purge_bin() -> None:
+    """Delete for good whatever has sat in the bin longer than BIN_DAYS (a project takes its tasks with it)."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=BIN_DAYS)).isoformat(timespec="seconds")
+    for table in ("ideas", "projects"):
+        for r in db.list_records(table, where="binned_at != '' AND binned_at < ?", args=(cutoff,)):
+            db.delete_record(table, r["id"])
 
 
 def _get(table: str, rid: int) -> dict:
@@ -59,7 +71,7 @@ class IdeaIn(BaseModel):
 
 @router.get("/ideas")
 def ideas():
-    return db.list_records("ideas", order="pinned DESC, created_at ASC, id ASC")  # oldest first
+    return db.list_records("ideas", where=LIVE, order="pinned DESC, created_at ASC, id ASC")  # oldest first
 
 
 @router.post("/ideas")
@@ -79,8 +91,28 @@ def update_idea(iid: int, body: IdeaIn):
     return db.update_record("ideas", iid, d)
 
 
+def _to_bin(table: str, rid: int, reason: str, extra: dict | None = None) -> dict:
+    _get(table, rid)
+    return db.update_record(table, rid, {**(extra or {}), "binned_at": db.now_iso(), "bin_reason": reason})
+
+
+@router.post("/ideas/{iid}/complete")
+def complete_idea(iid: int):
+    """Mark an idea or blog post completed: it leaves the list for the bin."""
+    return _to_bin("ideas", iid, "completed")
+
+
+@router.post("/ideas/{iid}/restore")
+def restore_idea(iid: int):
+    _get("ideas", iid)
+    return db.update_record("ideas", iid, {"binned_at": "", "bin_reason": ""})
+
+
 @router.delete("/ideas/{iid}")
-def delete_idea(iid: int):
+def delete_idea(iid: int, forever: bool = False):
+    """Deleting moves an idea to the bin; only ?forever=1 (from the bin itself) deletes it for good."""
+    if not forever:
+        return _to_bin("ideas", iid, "deleted")
     db.delete_record("ideas", iid)
     return {"ok": True}
 
@@ -156,11 +188,11 @@ class ProjectIn(BaseModel):
 @router.get("/projects")
 def projects():
     counts: dict[int, dict] = {}
-    for t in db.list_records("tasks"):
+    for t in _live_tasks():
         c = counts.setdefault(t["project_id"] or 0, {"todo": 0, "doing": 0, "done": 0, "future": 0})
         c[t["status"]] = c.get(t["status"], 0) + 1
     order = "CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, created_at"
-    return [{**p, "counts": counts.get(p["id"], {})} for p in db.list_records("projects", order=order)]
+    return [{**p, "counts": counts.get(p["id"], {})} for p in db.list_records("projects", where=LIVE, order=order)]
 
 
 @router.post("/projects")
@@ -180,8 +212,49 @@ def update_project(pid: int, body: ProjectIn):
     return db.update_record("projects", pid, d)
 
 
+@router.post("/projects/{pid}/complete")
+def complete_project(pid: int):
+    """Mark a project completed: it and its tasks leave the board for the bin."""
+    return _to_bin("projects", pid, "completed", {"status": "done"})
+
+
+@router.post("/projects/{pid}/restore")
+def restore_project(pid: int):
+    p = _get("projects", pid)
+    back = {"status": "active"} if p["bin_reason"] == "completed" else {}  # a deleted one keeps its old status
+    return db.update_record("projects", pid, {**back, "binned_at": "", "bin_reason": ""})
+
+
+# ---------------------------------------------------------------- bin
+
+@router.get("/bin")
+def bin_items():
+    purge_bin()
+    def left(r):
+        gone = datetime.fromisoformat(r["binned_at"]) + timedelta(days=BIN_DAYS)
+        return {**r, "deletes_at": gone.isoformat(timespec="seconds")}
+    tasks = db.list_records("tasks")
+    return {
+        "days": BIN_DAYS,
+        "ideas": [left(r) for r in db.list_records("ideas", where="binned_at != ''", order="binned_at DESC")],
+        "projects": [{**left(p), "tasks": sum(t["project_id"] == p["id"] for t in tasks)}
+                     for p in db.list_records("projects", where="binned_at != ''", order="binned_at DESC")],
+    }
+
+
+@router.delete("/bin")
+def empty_bin():
+    for table in ("ideas", "projects"):
+        for r in db.list_records(table, where="binned_at != ''"):
+            db.delete_record(table, r["id"])
+    return {"ok": True}
+
+
 @router.delete("/projects/{pid}")
-def delete_project(pid: int):
+def delete_project(pid: int, forever: bool = False):
+    """Deleting moves a project (and so its tasks) to the bin; ?forever=1 deletes it for good."""
+    if not forever:
+        return _to_bin("projects", pid, "deleted")
     db.delete_record("projects", pid)  # its tasks go with it (ON DELETE CASCADE)
     return {"ok": True}
 
@@ -198,9 +271,14 @@ class TaskIn(BaseModel):
     clear_project: bool = False
 
 
+def _live_tasks(order: str = "id") -> list[dict]:
+    """Tasks, minus those of projects that are in the bin."""
+    return db.list_records("tasks", where="project_id IS NULL OR project_id IN (SELECT id FROM projects WHERE binned_at = '')", order=order)
+
+
 @router.get("/tasks")
 def tasks():
-    return db.list_records("tasks", order="priority DESC, CASE WHEN due = '' THEN 1 ELSE 0 END, due, id")
+    return _live_tasks(order="priority DESC, CASE WHEN due = '' THEN 1 ELSE 0 END, due, id")
 
 
 @router.post("/tasks")

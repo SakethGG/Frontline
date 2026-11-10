@@ -290,6 +290,7 @@
         ${proj ? `<button class="primary-btn" data-x="goto-project">🎯 Open project “${esc(proj.name)}”</button>`
                : `<button class="primary-btn" data-x="project" title="Creates a project; open milestones become its tasks">🚀 Start a project from this</button>`}
         <span class="spacer"></span>
+        <button class="ghost-btn done-btn" data-x="complete" title="Done with this: moves it to the bin for 30 days">✓ Completed</button>
         <button class="danger-btn" data-x="delete">Delete</button>
       </div>`);
     $$("#drawer [data-qn]").forEach(fitNote);
@@ -313,8 +314,7 @@
       <div class="reader-nav"><span class="drawer-kicker">${KINDS.blog}</span><span class="save-state" id="ideaSaved"></span></div>
       <div class="reader-actions">
         <button class="ghost-btn ${I.focus ? "on" : ""}" data-x="focus" title="Full-screen writing, just you and the draft (Esc to leave)">${I.focus ? "⤡ Exit focus" : "⤢ Focus"}</button>
-        <button class="ghost-btn ${i.pinned ? "on" : ""} blog-extra" data-x="pin">${i.pinned ? "★ Pinned" : "☆ Pin"}</button>
-        <button class="icon-btn" data-x="close" title="Close" aria-label="Close">✕</button>
+        <button class="ghost-btn ${i.pinned ? "on" : ""} blog-extra" data-x="pin">${i.pinned ? "★ Pinned" : "☆ Pin"}</button>        <button class="icon-btn" data-x="close" title="Close" aria-label="Close">✕</button>
       </div>`, `
       <div class="blog-page">
       <input class="title-input" data-f="title" value="${esc(i.title)}" placeholder="Working title" aria-label="Title">
@@ -362,6 +362,7 @@
         <button class="primary-btn" data-x="export-md" title="A .md file with front matter, ready for your site">⬇ Download .md</button>
         <button class="ghost-btn" data-x="copy-md">Copy Markdown</button>
         <span class="spacer"></span>
+        <button class="ghost-btn done-btn" data-x="complete" title="Done with this post: moves it to the bin for 30 days">✓ Completed</button>
         <button class="danger-btn" data-x="delete">Delete</button>
       </div>
       </div>
@@ -521,9 +522,16 @@
         showSection("projects");
         return Sections.projects.select(p.id);
       }
+      case "complete": {
+        const edits = pendingEdits(i.id);  // keep any typing that hasn't autosaved yet
+        if (Object.keys(edits).length) await patch(i.id, {}, { rerender: false });
+        await Bin.complete("ideas", i.id, i.title);
+        closeDrawer();
+        I.ideas = I.ideas.filter((y) => y.id !== i.id);
+        return render();
+      }
       case "delete":
-        if (!confirm(`Delete “${i.title}”? This can't be undone.`)) return;
-        await api(`/api/ideas/${i.id}`, { method: "DELETE" });
+        await Bin.remove("ideas", i.id, i.title);  // recoverable from the bin for 30 days, so no confirm
         closeDrawer();
         I.ideas = I.ideas.filter((y) => y.id !== i.id);
         return render();

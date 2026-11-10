@@ -22,6 +22,7 @@ log = logging.getLogger("frontline.app")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
+    planner.purge_bin()  # completed items older than 30 days are deleted for good
     asyncio.create_task(_refresh_researcher_areas())
     asyncio.create_task(summarizer.probe())
     asyncio.create_task(conferences.refresh_if_stale())

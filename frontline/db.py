@@ -175,9 +175,13 @@ MIGRATIONS = {
     "ideas": {
         "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], beside the long-form body
         "meta": "TEXT NOT NULL DEFAULT '{}'",  # per-kind extras, e.g. a blog post's {hook, target, url}
+        "binned_at": "TEXT NOT NULL DEFAULT ''",  # completed or deleted: sits in the bin, deleted for good after BIN_DAYS
+        "bin_reason": "TEXT NOT NULL DEFAULT ''",  # "completed" | "deleted"
     },
     "projects": {
         "notes": "TEXT NOT NULL DEFAULT '[]'",  # quick notes: [{text, color, at}], in the right-hand sidebar
+        "binned_at": "TEXT NOT NULL DEFAULT ''",  # as for ideas
+        "bin_reason": "TEXT NOT NULL DEFAULT ''",
     },
 }
 

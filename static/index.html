@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=27">
+  <link rel="stylesheet" href="/static/style.css?v=28">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
@@ -160,6 +160,7 @@
         <div class="seg" id="ideaLayout">
           <button data-layout="grid" class="on">Grid</button><button data-layout="board">Board</button>
         </div>
+        <button class="ghost-btn" data-bin-open title="Completed items, kept for 30 days">🗑 Bin <span class="badge" data-bin-count></span></button>
       </div>
     </div>
     <form class="capture" id="ideaCapture">
@@ -411,6 +412,17 @@
     </form>
   </dialog>
 
+  <!-- Bin: completed ideas, blog posts and projects, deleted for good after 30 days -->
+  <dialog class="modal" id="binModal">
+    <div class="modal-head"><h2>🗑 Bin</h2><button class="icon-btn" type="button" data-close aria-label="Close">✕</button></div>
+    <div class="modal-body" id="binBody"></div>
+    <div class="modal-foot">
+      <button type="button" class="danger-btn" id="binEmpty" hidden>Empty bin</button>
+      <span class="spacer"></span>
+      <button type="button" class="ghost-btn" data-close>Close</button>
+    </div>
+  </dialog>
+
   <!-- Project editor -->
   <dialog class="modal" id="projectModal">
     <form method="dialog" id="projectForm">
@@ -576,7 +588,8 @@
   <script src="/static/home.js?v=7"></script>
   <script src="/static/library.js?v=5"></script>
   <script src="/static/conferences.js?v=2"></script>
-  <script src="/static/ideas.js?v=3"></script>
-  <script src="/static/projects.js?v=5"></script>
+  <script src="/static/bin.js?v=2"></script>
+  <script src="/static/ideas.js?v=6"></script>
+  <script src="/static/projects.js?v=7"></script>
 </body>
 </html>

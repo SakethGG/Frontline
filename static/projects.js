@@ -122,7 +122,8 @@
       row("inbox", "Inbox", openCount(P.tasks.filter((t) => !t.project_id)), "transparent") +
       active.map(proj).join("") +
       (rest.length ? `<div class="side-sep">Paused &amp; done</div>` + rest.map(proj).join("") : "") +
-      `<button class="person-row add" id="projNew">+ New project</button>`;
+      `<button class="person-row add" id="projNew">+ New project</button>` +
+      `<button class="person-row add" data-bin-open title="Completed projects and ideas, kept for 30 days">🗑 Bin <span class="badge" data-bin-count>${Bin.count() || ""}</span></button>`;
   }
 
   function renderHead() {
@@ -151,7 +152,10 @@
         ${tasks.length ? `<div class="mini-progress wide" title="${done} of ${tasks.length} done"><span style="width:${(100 * done) / tasks.length}%"></span></div>
           <p class="hint">${done} of ${plural(tasks.length, "task")} done</p>` : ""}
       </div>
-      <div class="head-actions"><button class="ghost-btn" id="projEdit">Edit project</button></div>`;
+      <div class="head-actions">
+        <button class="ghost-btn done-btn" id="projComplete" title="Done with this project: it and its tasks move to the bin for 30 days">✓ Completed</button>
+        <button class="ghost-btn" id="projEdit">Edit project</button>
+      </div>`;
   }
 
   // ---------------------------------------------------------------- quick notes
@@ -369,9 +373,7 @@
 
   async function deleteProject() {
     const p = P.projects.find((x) => x.id === P.editProject);
-    const n = P.tasks.filter((t) => t.project_id === p.id).length;
-    if (!confirm(`Delete “${p.name}”${n ? ` and its ${plural(n, "task")}` : ""}?`)) return;
-    await api(`/api/projects/${p.id}`, { method: "DELETE" });
+    await Bin.remove("projects", p.id, p.name);  // it and its tasks wait in the bin for 30 days
     $("#projectModal").close();
     P.sel = pref("proj.sel", "all");
     await reload();
@@ -429,6 +431,10 @@
 
     $("#projHead").onclick = (e) => {
       if (e.target.closest("#projEdit")) return openProject(project());
+      if (e.target.closest("#projComplete")) {
+        const p = project();
+        return Bin.complete("projects", p.id, p.name).then(() => { P.sel = pref("proj.sel", "all"); return reload(); });
+      }
       if (e.target.closest("#projNewHead")) return openProject(null);
       if (e.target.closest("[data-goto]")) return showSection("deadlines");
       const idea = e.target.closest("[data-goto-idea]");
